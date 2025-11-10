@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Imagen API Access</title>
+</head>
+<body>
+    <h1>Testing Google Imagen API Access</h1>
+    <button onclick="testImagen()">Test Imagen 3</button>
+    <button onclick="testPollinations()">Test Pollinations (Free)</button>
+    <div id="result"></div>
+    <div id="image"></div>
+
+    <script>
+        const API_KEY = 'AIzaSyA87Oaa76QY6b70oAIZdvQWneRNM6bdq7M';
+
+        async function testImagen() {
+            const result = document.getElementById('result');
+            result.innerHTML = 'Testing Imagen 3 endpoints...';
+
+            // Try different possible endpoints
+            const endpoints = [
+                `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${API_KEY}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/imagegeneration-002:predict?key=${API_KEY}`,
+                `https://generativelanguage.googleapis.com/v1/models/imagen-3.0-generate-001:predict?key=${API_KEY}`,
+            ];
+
+            for (const endpoint of endpoints) {
+                try {
+                    result.innerHTML += `<br><br>Trying: ${endpoint.split('?')[0]}...`;
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            prompt: "A simple cartoon dog",
+                            instances: [{ prompt: "A simple cartoon dog" }],
+                            parameters: { sampleCount: 1 }
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    result.innerHTML += `<br>Status: ${response.status}`;
+                    result.innerHTML += `<br>Response: ${JSON.stringify(data, null, 2)}`;
+                    
+                    if (response.ok) {
+                        result.innerHTML += '<br><strong>✓ This endpoint works!</strong>';
+                        break;
+                    }
+                } catch (error) {
+                    result.innerHTML += `<br>Error: ${error.message}`;
+                }
+            }
+        }
+
+        async function testPollinations() {
+            const result = document.getElementById('result');
+            const imageDiv = document.getElementById('image');
+            
+            result.innerHTML = 'Testing Pollinations.ai (free, no API key)...';
+            
+            const prompt = "A simple, colorful, child-friendly cartoon illustration of a brave firefighter rescuing a cat from a tree";
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=400&height=300&nologo=true`;
+            
+            result.innerHTML += `<br><br>Generated URL: ${imageUrl}`;
+            result.innerHTML += '<br><strong>✓ Pollinations works! See image below:</strong>';
+            
+            imageDiv.innerHTML = `<br><img src="${imageUrl}" alt="Generated image" style="max-width: 400px; border: 2px solid #ccc; border-radius: 8px;">`;
+        }
+    </script>
+</body>
+</html>

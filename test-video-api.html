@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Google Video API</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+        video { max-width: 600px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Test Google Video Generation API</h1>
+    <button onclick="testVideoAPI()">Test Video Generation</button>
+    <div id="result"></div>
+    <div id="video"></div>
+
+    <script>
+        const API_KEY = 'AIzaSyA87Oaa76QY6b70oAIZdvQWneRNM6bdq7M';
+
+        async function testVideoAPI() {
+            const result = document.getElementById('result');
+            const videoDiv = document.getElementById('video');
+            
+            result.innerHTML = '<p>Testing video generation API...</p>';
+            videoDiv.innerHTML = '';
+            
+            const prompt = "A brave firefighter saving a cat from a tree";
+            
+            // Try different possible endpoints
+            const endpoints = [
+                `https://api.gemini.google.com/v1/video/generate?key=${API_KEY}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/video-generation:generate?key=${API_KEY}`,
+                `https://generativelanguage.googleapis.com/v1beta/video:generate?key=${API_KEY}`,
+            ];
+            
+            for (const endpoint of endpoints) {
+                try {
+                    result.innerHTML += `<p>Trying: ${endpoint.split('?')[0]}...</p>`;
+                    
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            prompt: prompt,
+                            duration: 3
+                        })
+                    });
+                    
+                    result.innerHTML += `<p>Status: ${response.status}</p>`;
+                    
+                    const data = await response.json();
+                    result.innerHTML += `<p>Response:</p><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                    
+                    if (response.ok) {
+                        result.innerHTML += '<p style="color: green;">✓ This endpoint works!</p>';
+                        break;
+                    }
+                    
+                } catch (error) {
+                    result.innerHTML += `<p style="color: red;">Error: ${error.message}</p>`;
+                }
+            }
+            
+            // Also check if video models are available
+            result.innerHTML += '<hr><p>Checking available models for video...</p>';
+            try {
+                const modelsResponse = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`
+                );
+                const modelsData = await modelsResponse.json();
+                
+                const videoModels = modelsData.models?.filter(m => 
+                    m.name.toLowerCase().includes('video') || 
+                    m.displayName?.toLowerCase().includes('video') ||
+                    m.description?.toLowerCase().includes('video')
+                );
+                
+                if (videoModels && videoModels.length > 0) {
+                    result.innerHTML += '<p style="color: green;">Video models found:</p>';
+                    result.innerHTML += '<pre>' + JSON.stringify(videoModels, null, 2) + '</pre>';
+                } else {
+                    result.innerHTML += '<p style="color: orange;">⚠️ No video generation models found in your API key.</p>';
+                    result.innerHTML += '<p>Video generation may require:</p>';
+                    result.innerHTML += '<ul>';
+                    result.innerHTML += '<li>A different API tier or billing setup</li>';
+                    result.innerHTML += '<li>Access to Google Cloud Vertex AI</li>';
+                    result.innerHTML += '<li>Special permissions from Google</li>';
+                    result.innerHTML += '</ul>';
+                }
+            } catch (error) {
+                result.innerHTML += `<p style="color: red;">Error checking models: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>
