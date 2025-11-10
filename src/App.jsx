@@ -312,7 +312,7 @@ Remember: Examples must be SHORT (5-8 words), CONCRETE, and age-appropriate for 
           
           // Add delay between requests to avoid rate limiting (except for first request)
           if (index > 0) {
-            await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay between requests
+            await new Promise(resolve => setTimeout(resolve, 12000)); // 12 second delay between requests
           }
           
           // Use Nano Banana (gemini-2.5-flash-image) for image generation
@@ -401,7 +401,7 @@ Remember: Examples must be SHORT (5-8 words), CONCRETE, and age-appropriate for 
           setImageProgress({ current: imageCount, total: totalImages, word: `${distractor} (distractor)` });
           
           try {
-            await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+            await new Promise(resolve => setTimeout(resolve, 12000)); // 12 second delay
             
             const distractorPrompt = `A graphic novel style illustration showing: ${distractor}. Bold lines, dynamic composition, age-appropriate for 6th grade middle school students, comic book art style with clear details and good contrast.`;
             
@@ -604,7 +604,7 @@ Remember: Examples must be SHORT (5-8 words), CONCRETE, and age-appropriate for 
                 {imageProgress.total === 0 ? (
                   'This should take about 5-10 seconds...'
                 ) : (
-                  `Each image takes 15-60 seconds to generate. Please be patient! (${Math.round((imageProgress.current / imageProgress.total) * 100)}% complete)`
+                  `Each image takes 12-15 seconds to generate. Please be patient! (${Math.round((imageProgress.current / imageProgress.total) * 100)}% complete)`
                 )}
               </p>
               {imageProgress.total > 0 && (
