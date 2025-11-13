@@ -1,0 +1,10 @@
+{
+  "lessons": [
+    {
+      "id": "example-animals",
+      "name": "Animals Vocabulary",
+      "description": "Learn about different animals",
+      "file": "example-animals.json"
+    }
+  ]
+}

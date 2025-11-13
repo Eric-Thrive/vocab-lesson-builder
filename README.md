@@ -14,6 +14,7 @@ An interactive vocabulary lesson builder for 6th grade students, featuring AI-ge
 - Save and load lessons locally
 - Edit definitions and images on the fly
 - Progress tracking during image generation
+- **Share lessons with short URLs** - Deploy to GitHub and share `yoursite.com?lesson=animals` instead of long base64 URLs!
 
 ## Development
 
@@ -31,15 +32,42 @@ npm run build
 npm run preview
 ```
 
+## Sharing Lessons with Students
+
+### Automatic (Recommended)
+
+Set up **GitHub Auto-Save** for instant sharing:
+1. Follow [GITHUB_SETUP.md](GITHUB_SETUP.md) to configure
+2. Enable the toggle in the app
+3. Create a lesson - it automatically saves to GitHub!
+4. Share the short URL: `yoursite.com?lesson=animals-lesson`
+
+### Manual (Alternative)
+
+1. Create a lesson in the app
+2. Click "Share Link for Students"
+3. Download the lesson JSON file
+4. Add it to `public/lessons/` folder
+5. Deploy to GitHub Pages, Netlify, or Vercel
+6. Share the short URL: `yoursite.com?lesson=animals-lesson`
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
+
+### Legacy Share (Long URLs)
+
+The app still supports the old base64 URL format for quick sharing without deployment, but these URLs can be very long.
+
 ## Deployment
 
 This app can be deployed to:
-- Vercel
-- Netlify
-- GitHub Pages
+- **GitHub Pages** (free, easy) - Recommended
+- **Netlify** (free, automatic deployments)
+- **Vercel** (free, fast)
 - Any static hosting service
 
 Simply run `npm run build` and deploy the `dist` folder.
+
+For detailed deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Environment Variables
 
