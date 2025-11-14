@@ -1,0 +1,87 @@
+{
+  "id": "braveturtlefee",
+  "name": "Lesson - brave, turtle, fee...",
+  "description": "Vocabulary lesson with 3 words",
+  "date": "2025-11-14T02:11:03.109Z",
+  "words": "brave, turtle, fee\n",
+  "lessonData": {
+    "words": [
+      {
+        "word": "brave",
+        "definition": "Not afraid of danger or pain.",
+        "examples": [
+          "The brave firefighter saved the cat.",
+          "She was brave to try new foods."
+        ],
+        "partOfSpeech": "adjective",
+        "image": "https://image.pollinations.ai/prompt/A%20graphic%20novel%20style%20illustration%20showing%3A%20The%20brave%20firefighter%20saved%20the%20cat..%20Bold%20lines%2C%20dynamic%20composition%2C%20age-appropriate%20for%206th%20grade%20middle%20school%20students%2C%20comic%20book%20art%20style%20with%20clear%20details%20and%20good%20contrast.?width=1024&height=1024&nologo=true&model=flux&enhance=true&seed=1763086251982"
+      },
+      {
+        "word": "turtle",
+        "definition": "A slow animal with a hard shell.",
+        "examples": [
+          "The small turtle walked very slowly.",
+          "A sea turtle swims in the ocean."
+        ],
+        "partOfSpeech": "noun",
+        "image": "https://image.pollinations.ai/prompt/A%20graphic%20novel%20style%20illustration%20showing%3A%20The%20small%20turtle%20walked%20very%20slowly..%20Bold%20lines%2C%20dynamic%20composition%2C%20age-appropriate%20for%206th%20grade%20middle%20school%20students%2C%20comic%20book%20art%20style%20with%20clear%20details%20and%20good%20contrast.?width=1024&height=1024&nologo=true&model=flux&enhance=true&seed=1763086257876"
+      },
+      {
+        "word": "fee",
+        "definition": "Money you pay for a service or to do something.",
+        "examples": [
+          "There was a small fee to enter.",
+          "He paid the fee to play the game."
+        ],
+        "partOfSpeech": "noun",
+        "image": "https://image.pollinations.ai/prompt/A%20graphic%20novel%20style%20illustration%20showing%3A%20There%20was%20a%20small%20fee%20to%20enter..%20Bold%20lines%2C%20dynamic%20composition%2C%20age-appropriate%20for%206th%20grade%20middle%20school%20students%2C%20comic%20book%20art%20style%20with%20clear%20details%20and%20good%20contrast.?width=1024&height=1024&nologo=true&model=flux&enhance=true&seed=1763086263110"
+      }
+    ],
+    "distractors": [
+      "run",
+      "happy",
+      "book"
+    ],
+    "story": {
+      "title": "Leo and the Brave New Club",
+      "text": "Leo loved animals. He wanted to join the Nature Explorers Club at school. His friend, Maya, told him there was a small **fee** to join. \"A **fee**?\" Leo worried. \"What if I don't have enough money?\" Maya said, \"Don't worry, it's a small **fee**.\" The first meeting was at the old pond. The club leader, Mr. Chen, told them they needed to be **brave** explorers. \"Today, we're looking for pond creatures!\" he said. Leo felt a little scared. He saw something moving slowly near the water. It was a small **turtle**! The **turtle** had a green shell. Leo carefully walked closer. He felt **brave** as he watched the **turtle** slowly move into the water. He even took a picture. He knew paying the **fee** was worth it. Being **brave** and seeing the **turtle** made him very happy. He was glad he joined the club."
+    },
+    "practice": {
+      "fillInBlank": [
+        {
+          "sentence": "The knight was very ___ when he faced the dragon.",
+          "answer": "brave",
+          "options": [
+            "brave",
+            "turtle",
+            "fee"
+          ]
+        },
+        {
+          "sentence": "We saw a slow ___ crossing the road.",
+          "answer": "turtle",
+          "options": [
+            "brave",
+            "turtle",
+            "fee"
+          ]
+        },
+        {
+          "sentence": "You need to pay a ___ to get into the museum.",
+          "answer": "fee",
+          "options": [
+            "brave",
+            "turtle",
+            "fee"
+          ]
+        }
+      ],
+      "comprehension": [
+        {
+          "question": "What did Leo see at the pond?",
+          "answer": "Leo saw a small turtle at the pond."
+        }
+      ]
+    }
+  }
+}
