@@ -1,0 +1,106 @@
+{
+  "id": "bravefreebizarrevaluable",
+  "name": "Lesson - brave, free, bizarre,  valuable...",
+  "description": "Vocabulary lesson with 4 words",
+  "date": "2025-11-14T01:50:50.910Z",
+  "words": "brave, free, bizarre,  valuable\n",
+  "lessonData": {
+    "words": [
+      {
+        "word": "brave",
+        "definition": "Not afraid to do things that are dangerous or hard.",
+        "examples": [
+          "The brave firefighter saved the cat.",
+          "She was brave to try a new sport."
+        ],
+        "partOfSpeech": "adjective",
+        "image": "https://image.pollinations.ai/prompt/A%20graphic%20novel%20style%20illustration%20showing%3A%20The%20brave%20firefighter%20saved%20the%20cat..%20Bold%20lines%2C%20dynamic%20composition%2C%20age-appropriate%20for%206th%20grade%20middle%20school%20students%2C%20comic%20book%20art%20style%20with%20clear%20details%20and%20good%20contrast.?width=1024&height=1024&nologo=true&model=flux&enhance=true&seed=1763085014629"
+      },
+      {
+        "word": "free",
+        "definition": "Not held or controlled by anyone; able to move or act as you wish.",
+        "examples": [
+          "The bird was finally free to fly.",
+          "I feel free when I ride my bike."
+        ],
+        "partOfSpeech": "adjective",
+        "image": "https://image.pollinations.ai/prompt/A%20graphic%20novel%20style%20illustration%20showing%3A%20The%20bird%20was%20finally%20free%20to%20fly..%20Bold%20lines%2C%20dynamic%20composition%2C%20age-appropriate%20for%206th%20grade%20middle%20school%20students%2C%20comic%20book%20art%20style%20with%20clear%20details%20and%20good%20contrast.?width=1024&height=1024&nologo=true&model=flux&enhance=true&seed=1763085026736"
+      },
+      {
+        "word": "bizarre",
+        "definition": "Very strange or unusual, sometimes in a funny way.",
+        "examples": [
+          "He told a bizarre story about aliens.",
+          "The hat was a bizarre shape."
+        ],
+        "partOfSpeech": "adjective",
+        "image": "https://image.pollinations.ai/prompt/A%20graphic%20novel%20style%20illustration%20showing%3A%20He%20told%20a%20bizarre%20story%20about%20aliens..%20Bold%20lines%2C%20dynamic%20composition%2C%20age-appropriate%20for%206th%20grade%20middle%20school%20students%2C%20comic%20book%20art%20style%20with%20clear%20details%20and%20good%20contrast.?width=1024&height=1024&nologo=true&model=flux&enhance=true&seed=1763085038823"
+      },
+      {
+        "word": "valuable",
+        "definition": "Worth a lot of money, or very important and useful.",
+        "examples": [
+          "The old painting was very valuable.",
+          "Friendship is a valuable thing to have."
+        ],
+        "partOfSpeech": "adjective",
+        "image": "https://image.pollinations.ai/prompt/A%20graphic%20novel%20style%20illustration%20showing%3A%20The%20old%20painting%20was%20very%20valuable..%20Bold%20lines%2C%20dynamic%20composition%2C%20age-appropriate%20for%206th%20grade%20middle%20school%20students%2C%20comic%20book%20art%20style%20with%20clear%20details%20and%20good%20contrast.?width=1024&height=1024&nologo=true&model=flux&enhance=true&seed=1763085050913"
+      }
+    ],
+    "distractors": [
+      "happy",
+      "jump",
+      "quiet"
+    ],
+    "story": {
+      "title": "Leo and the Glowing Stone",
+      "text": "Leo loved exploring the woods behind his house. One sunny afternoon, he saw something strange. A small, smooth stone glowed with a soft blue light! It was quite a bizarre sight. He had never seen anything like it before. Leo felt a little scared, but he knew he had to be brave. He carefully picked up the glowing stone. It felt warm in his hand. He wondered if it was valuable. Could it be a special kind of rock? Leo decided to take it home to show his dad. His dad, a scientist, looked very surprised. \"This is truly bizarre, Leo!\" he exclaimed. \"This stone is very valuable! It holds a rare type of energy.\" Leo felt so happy and free, knowing he had made such an amazing discovery. Being brave had led him to something truly valuable."
+    },
+    "practice": {
+      "fillInBlank": [
+        {
+          "sentence": "The knight was very ___ when he fought the dragon.",
+          "answer": "brave",
+          "options": [
+            "brave",
+            "free",
+            "bizarre"
+          ]
+        },
+        {
+          "sentence": "After the bell rang, the students felt ___ to go home.",
+          "answer": "free",
+          "options": [
+            "free",
+            "valuable",
+            "brave"
+          ]
+        },
+        {
+          "sentence": "She wore a very ___ outfit to the party, with feathers and bright colors.",
+          "answer": "bizarre",
+          "options": [
+            "bizarre",
+            "valuable",
+            "free"
+          ]
+        },
+        {
+          "sentence": "My grandmother's ring is very ___ because it belonged to her mother.",
+          "answer": "valuable",
+          "options": [
+            "valuable",
+            "bizarre",
+            "brave"
+          ]
+        }
+      ],
+      "comprehension": [
+        {
+          "question": "What did Leo find in the woods?",
+          "answer": "Leo found a small, smooth stone that glowed with a blue light."
+        }
+      ]
+    }
+  }
+}
