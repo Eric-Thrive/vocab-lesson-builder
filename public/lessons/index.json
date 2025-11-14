@@ -5,6 +5,13 @@
       "name": "Animals Vocabulary",
       "description": "Learn about different animals",
       "file": "example-animals.json"
+    },
+    {
+      "id": "free-wish-fun-gone-game-fell-soil-catch",
+      "name": "Lesson - free, wish, fun...",
+      "description": "Vocabulary lesson with 8 words",
+      "date": "2025-11-14T04:39:41.506Z",
+      "file": "free-wish-fun-gone-game-fell-soil-catch.json"
     }
   ]
 }
