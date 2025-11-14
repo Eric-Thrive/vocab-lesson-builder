@@ -868,15 +868,17 @@ RULES:
                         'Authorization': `Bearer ${openaiKey}`
                       },
                       body: JSON.stringify({
-                        model: 'gpt-image-1',
+                        model: 'dall-e-3',
                         prompt: imagePrompt,
-                        size: '1024x1024'
+                        size: '1024x1024',
+                        quality: 'standard'
                       })
                     }
                   );
                   
                   if (dalleResponse.ok) {
                     const dalleData = await dalleResponse.json();
+                    console.log('OpenAI response:', dalleData);
                     if (dalleData.data && dalleData.data[0] && dalleData.data[0].url) {
                       console.log(`OpenAI image generated for "${wordObj.word}"`);
                       wordsWithImages.push({
@@ -885,9 +887,12 @@ RULES:
                       });
                       continue;
                     }
+                  } else {
+                    const errorData = await dalleResponse.json().catch(() => ({}));
+                    console.error(`OpenAI error for "${wordObj.word}":`, dalleResponse.status, errorData);
                   }
                 } catch (openaiError) {
-                  console.warn(`OpenAI also failed for "${wordObj.word}":`, openaiError);
+                  console.error(`OpenAI exception for "${wordObj.word}":`, openaiError);
                 }
               }
               
