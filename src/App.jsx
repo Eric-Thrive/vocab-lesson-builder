@@ -817,11 +817,57 @@ RULES:
         const imagePrompt = `A graphic novel style illustration showing: ${exampleSentence}. Bold lines, dynamic composition, age-appropriate for 6th grade middle school students, comic book art style with clear details and good contrast.`;
         
         try {
+          const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
+          
+          // Try OpenAI DALL-E first if key is available
+          if (openaiKey && openaiKey !== 'your_openai_key_here') {
+            console.log(`Generating image ${index + 1}/${lesson.words.length} for "${wordObj.word}" using DALL-E`);
+            
+            // Add small delay between requests
+            if (index > 0) {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+            
+            const dalleResponse = await fetch(
+              'https://api.openai.com/v1/images/generations',
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${openaiKey}`
+                },
+                body: JSON.stringify({
+                  model: 'dall-e-3',
+                  prompt: imagePrompt,
+                  n: 1,
+                  size: '1024x1024',
+                  quality: 'standard',
+                  style: 'vivid'
+                })
+              }
+            );
+            
+            if (dalleResponse.ok) {
+              const dalleData = await dalleResponse.json();
+              if (dalleData.data && dalleData.data[0] && dalleData.data[0].url) {
+                console.log(`DALL-E image generated for "${wordObj.word}"`);
+                wordsWithImages.push({
+                  ...wordObj,
+                  image: dalleData.data[0].url
+                });
+                continue;
+              }
+            } else {
+              console.warn(`DALL-E failed for "${wordObj.word}", falling back to Nano Banana`);
+            }
+          }
+          
+          // Fallback to Nano Banana
           console.log(`Generating image ${index + 1}/${lesson.words.length} for "${wordObj.word}" using Nano Banana`);
           
           // Add delay between requests to avoid rate limiting (except for first request)
           if (index > 0) {
-            await new Promise(resolve => setTimeout(resolve, 12000)); // 12 second delay between requests for Nano Banana
+            await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay between requests for Nano Banana
           }
           
           // Use Nano Banana (gemini-2.5-flash-image) for image generation
@@ -847,12 +893,12 @@ RULES:
           );
           
           if (!imgResponse.ok) {
-            const errorData = await imgResponse.json();
+            const errorData = await imgResponse.json().catch(() => ({}));
             console.error(`Nano Banana error for "${wordObj.word}":`, imgResponse.status, errorData);
             
-            // If rate limited (429), use free alternative
-            if (imgResponse.status === 429) {
-              console.log(`Rate limited, using Pollinations.ai for "${wordObj.word}"`);
+            // If rate limited (429 or 403), use free alternative
+            if (imgResponse.status === 429 || imgResponse.status === 403) {
+              console.log(`Rate limited (${imgResponse.status}), using Pollinations.ai for "${wordObj.word}"`);
               const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=1024&height=1024&nologo=true&model=flux&enhance=true&seed=${Date.now() + index}`;
               wordsWithImages.push({
                 ...wordObj,
