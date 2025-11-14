@@ -27,7 +27,6 @@ const VocabLessonBuilder = () => {
   const [comprehensionAnswers, setComprehensionAnswers] = useState({});
   const [comprehensionFeedback, setComprehensionFeedback] = useState({});
   const [checkingAnswer, setCheckingAnswer] = useState(null);
-  const [githubAutoSave, setGithubAutoSave] = useState(false);
   const [githubSaveStatus, setGithubSaveStatus] = useState('');
 
   // Load lesson from URL on mount
@@ -85,7 +84,7 @@ const VocabLessonBuilder = () => {
 
     try {
       setGithubSaveStatus('Saving to GitHub...');
-      
+
       const path = `public/lessons/${lessonId}.json`;
       const content = btoa(JSON.stringify(lessonData, null, 2));
 
@@ -133,6 +132,9 @@ const VocabLessonBuilder = () => {
         throw new Error(error.message || 'Failed to save to GitHub');
       }
 
+      // Update the index.json file
+      await updateLessonIndex(lessonId, lessonData, token, owner, repo, branch);
+
       setGithubSaveStatus('✓ Saved to GitHub!');
       setTimeout(() => setGithubSaveStatus(''), 3000);
       console.log('Lesson saved to GitHub:', lessonId);
@@ -145,25 +147,166 @@ const VocabLessonBuilder = () => {
     }
   };
 
-  // Load saved lessons on mount
-  React.useEffect(() => {
-    const loadSavedLessons = async () => {
+  // Update the lessons index file in GitHub
+  const updateLessonIndex = async (lessonId, lessonData, token, owner, repo, branch) => {
+    try {
+      const indexPath = 'public/lessons/index.json';
+
+      // Fetch current index
+      let currentIndex = { lessons: [] };
+      let indexSha = null;
+
       try {
-        const keys = await window.storage.list('lesson:');
-        if (keys && keys.keys) {
-          const lessons = await Promise.all(
-            keys.keys.map(async (key) => {
-              const result = await window.storage.get(key);
-              return result ? { key, ...JSON.parse(result.value) } : null;
-            })
-          );
-          setSavedLessons(lessons.filter(Boolean));
+        const indexResponse = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/contents/${indexPath}?ref=${branch}`,
+          {
+            headers: {
+              'Authorization': `token ${token}`,
+              'Accept': 'application/vnd.github.v3+json'
+            }
+          }
+        );
+
+        if (indexResponse.ok) {
+          const indexData = await indexResponse.json();
+          indexSha = indexData.sha;
+          const decodedContent = atob(indexData.content);
+          currentIndex = JSON.parse(decodedContent);
+        }
+      } catch (e) {
+        console.log('Index file does not exist yet, will create it');
+      }
+
+      // Remove existing entry for this lesson if it exists
+      currentIndex.lessons = currentIndex.lessons.filter(lesson => lesson.id !== lessonId);
+
+      // Add new/updated lesson entry
+      currentIndex.lessons.push({
+        id: lessonId,
+        name: lessonData.name,
+        description: lessonData.description || `Vocabulary lesson with ${lessonData.lessonData?.words?.length || 0} words`,
+        date: lessonData.date || new Date().toISOString(),
+        file: `${lessonId}.json`
+      });
+
+      // Sort by date (newest first)
+      currentIndex.lessons.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      // Update index file
+      const indexContent = btoa(JSON.stringify(currentIndex, null, 2));
+
+      const updateResponse = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/contents/${indexPath}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `token ${token}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: `Update index: add/update ${lessonData.name}`,
+            content: indexContent,
+            branch: branch,
+            ...(indexSha && { sha: indexSha })
+          })
+        }
+      );
+
+      if (!updateResponse.ok) {
+        const error = await updateResponse.json();
+        throw new Error(error.message || 'Failed to update index');
+      }
+
+      console.log('Index file updated successfully');
+    } catch (error) {
+      console.error('Error updating index file:', error);
+      // Don't throw - we don't want to fail the entire save if index update fails
+    }
+  };
+
+  // Load saved lessons from GitHub on mount
+  React.useEffect(() => {
+    const loadSavedLessonsFromGitHub = async () => {
+      try {
+        // Try to fetch the index.json file that lists all lessons
+        const response = await fetch('/lessons/index.json');
+        if (response.ok) {
+          const index = await response.json();
+          if (index.lessons && Array.isArray(index.lessons)) {
+            setSavedLessons(index.lessons);
+            return;
+          }
         }
       } catch (error) {
-        console.log('No saved lessons yet');
+        console.log('Could not load index.json, trying directory listing...');
+      }
+
+      // Fallback: Try to get list from GitHub API directly
+      const token = import.meta.env.VITE_GITHUB_TOKEN;
+      const owner = import.meta.env.VITE_GITHUB_OWNER;
+      const repo = import.meta.env.VITE_GITHUB_REPO;
+      const branch = import.meta.env.VITE_GITHUB_BRANCH || 'main';
+
+      if (!token || !owner || !repo) {
+        console.log('GitHub credentials not configured, cannot load saved lessons from GitHub');
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/contents/public/lessons?ref=${branch}`,
+          {
+            headers: {
+              'Authorization': `token ${token}`,
+              'Accept': 'application/vnd.github.v3+json'
+            }
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch lessons from GitHub');
+        }
+
+        const files = await response.json();
+
+        // Filter for JSON files and exclude index.json and README
+        const lessonFiles = files.filter(file =>
+          file.name.endsWith('.json') &&
+          file.name !== 'index.json' &&
+          file.name !== '.gitkeep'
+        );
+
+        // Fetch each lesson file
+        const lessons = await Promise.all(
+          lessonFiles.map(async (file) => {
+            try {
+              const lessonResponse = await fetch(`/lessons/${file.name}`);
+              if (lessonResponse.ok) {
+                const lesson = await lessonResponse.json();
+                return {
+                  key: file.name.replace('.json', ''),
+                  id: file.name.replace('.json', ''),
+                  name: lesson.name || file.name.replace('.json', ''),
+                  date: lesson.date || new Date().toISOString(),
+                  words: lesson.words || '',
+                  lessonData: lesson.lessonData || {}
+                };
+              }
+              return null;
+            } catch (error) {
+              console.error(`Error loading lesson ${file.name}:`, error);
+              return null;
+            }
+          })
+        );
+
+        setSavedLessons(lessons.filter(Boolean));
+      } catch (error) {
+        console.error('Error loading saved lessons from GitHub:', error);
       }
     };
-    loadSavedLessons();
+    loadSavedLessonsFromGitHub();
   }, []);
 
   // Auto-save student progress when answers change
@@ -468,15 +611,15 @@ const VocabLessonBuilder = () => {
     }
 
     setCheckingAnswer(questionIndex);
-    const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
+    const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
 
     console.log('Checking answer for question:', questionIndex);
-    console.log('API key available:', !!apiKey);
+    console.log('OpenAI API key available:', !!openaiKey);
 
-    if (!apiKey) {
+    if (!openaiKey || openaiKey === 'your_openai_key_here') {
       setComprehensionFeedback(prev => ({
         ...prev,
-        [questionIndex]: 'API key not found. Please check your .env file.'
+        [questionIndex]: 'OpenAI API key not found. Please add VITE_OPENAI_API_KEY to your .env file.'
       }));
       setCheckingAnswer(null);
       return;
@@ -493,23 +636,24 @@ Give brief, encouraging feedback (2-3 short sentences). Use simple 3rd grade lev
 
 Be warm and use very simple language.`;
 
-      console.log('Sending prompt to API...');
+      console.log('Sending prompt to OpenAI GPT-4o...');
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        'https://api.openai.com/v1/chat/completions',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openaiKey}`
+          },
           body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: promptText
-              }]
+            model: 'gpt-4o',
+            messages: [{
+              role: 'user',
+              content: promptText
             }],
-            generationConfig: {
-              temperature: 0.7,
-              maxOutputTokens: 150
-            }
+            temperature: 0.7,
+            max_tokens: 150
           })
         }
       );
@@ -517,42 +661,22 @@ Be warm and use very simple language.`;
       console.log('Response status:', response.status);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Gemini API error:', response.status, errorText);
-        throw new Error(`API error: ${response.status}`);
+        const errorData = await response.json();
+        console.error('OpenAI API error:', response.status, errorData);
+        throw new Error(`API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
       }
 
-      const responseText = await response.text();
-      console.log('Raw response:', responseText.substring(0, 500));
-      
-      const data = JSON.parse(responseText);
-      console.log('Parsed data:', data);
-      
-      if (!data.candidates || !data.candidates[0]) {
-        console.error('No candidates in response:', data);
-        throw new Error('No response from AI');
+      const data = await response.json();
+      console.log('OpenAI response:', data);
+
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        console.error('No choices in response:', data);
+        throw new Error('No response from OpenAI');
       }
-      
-      const candidate = data.candidates[0];
-      console.log('Candidate:', JSON.stringify(candidate, null, 2));
-      console.log('Candidate.content:', JSON.stringify(candidate.content, null, 2));
-      console.log('Candidate.content.parts:', candidate.content?.parts);
-      
-      // Handle different response structures
-      let feedback = '';
-      if (candidate.content?.parts && candidate.content.parts[0]?.text) {
-        feedback = candidate.content.parts[0].text.trim();
-      } else if (candidate.content?.text) {
-        feedback = candidate.content.text.trim();
-      } else if (candidate.text) {
-        feedback = candidate.text.trim();
-      } else {
-        console.error('Could not find text in response:', candidate);
-        throw new Error('Invalid response from AI');
-      }
-      
+
+      const feedback = data.choices[0].message.content.trim();
       console.log('Feedback received:', feedback);
-      
+
       setComprehensionFeedback(prev => ({
         ...prev,
         [questionIndex]: feedback
@@ -565,7 +689,6 @@ Be warm and use very simple language.`;
         [questionIndex]: 'Sorry, I had trouble checking your answer. Please try again!'
       }));
     }
-    setCheckingAnswer(null);
     setCheckingAnswer(null);
   };
 
@@ -641,6 +764,7 @@ Be warm and use very simple language.`;
     // Retry logic for JSON generation
     let retries = 3;
     let lesson = null;
+    let validationRetries = 3; // Additional retries for validation
     
     while (retries > 0 && !lesson) {
       try {
@@ -680,17 +804,22 @@ Return a valid JSON object with this EXACT structure (no extra text, no markdown
       {"sentence": "The student was very ___.", "answer": "word", "options": ["word1", "word2", "word3"]}
     ],
     "comprehension": [
-      {"question": "What happened in the story?", "answer": "sample answer"}
+      {"question": "Identification question about the story", "answer": "sample answer"},
+      {"question": "Another identification question", "answer": "sample answer"},
+      {"question": "Question about a character in the story", "answer": "sample answer"},
+      {"question": "Question about another character", "answer": "sample answer"},
+      {"question": "Question about the theme or lesson", "answer": "sample answer"}
     ]
   }
 }
 
-RULES: 
+RULES:
 - Include exactly 3 "distractors" - simple words NOT in the vocabulary list
 - partOfSpeech must be ONE word: "noun", "verb", "adjective", or "adverb"
 - Examples must be SHORT (5-8 words) and age-appropriate
 - Create ONE fill-in-the-blank question for EACH vocabulary word (${wordList.length} total questions)
 - Each fillInBlank question must have 3 options: the correct answer plus 2 other vocabulary words
+- Create EXACTLY 5 comprehension questions: 2 identification questions (about events/settings/objects), 2 character questions (about motivations/actions/feelings), and 1 theme question (about the main lesson/message)
 - NO trailing commas in arrays or objects
 - Return ONLY valid JSON`
                 }]
@@ -756,6 +885,24 @@ RULES:
         try {
           lesson = JSON.parse(cleanContent);
           console.log('Successfully parsed JSON!');
+          
+          // Validate that we have exactly 5 comprehension questions
+          if (!lesson.practice?.comprehension || lesson.practice.comprehension.length !== 5) {
+            console.warn(`Expected 5 comprehension questions, got ${lesson.practice?.comprehension?.length || 0}`);
+            
+            // If we have validation retries left, try again
+            if (validationRetries > 0) {
+              validationRetries--;
+              retries--; // Also decrement main retries
+              console.log(`Retrying due to incorrect number of comprehension questions... (${validationRetries} validation retries left)`);
+              lesson = null; // Reset lesson to trigger retry
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              continue;
+            } else {
+              console.error('Failed to get exactly 5 comprehension questions after multiple attempts');
+              // Continue anyway with what we have, but log the issue
+            }
+          }
         } catch (parseError) {
           console.error('JSON Parse Error:', parseError);
           console.error('Failed to parse:', cleanContent);
@@ -814,134 +961,132 @@ RULES:
         
         // Define imagePrompt outside try block so it's available in catch
         const exampleSentence = wordObj.examples[0] || wordObj.word;
-        const imagePrompt = `A graphic novel style illustration showing: ${exampleSentence}. Bold lines, dynamic composition, age-appropriate for 6th grade middle school students, comic book art style with clear details and good contrast.`;
-        
-        try {
-          // Try Nano Banana first (Google Gemini image generation)
-          console.log(`Generating image ${index + 1}/${lesson.words.length} for "${wordObj.word}" using Nano Banana`);
-          
-          // Add delay between requests to avoid rate limiting (except for first request)
-          if (index > 0) {
-            await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay between requests for Nano Banana
+        const imagePrompt = `A graphic novel style illustration showing: ${exampleSentence}. Bold lines, dynamic composition, age-appropriate for 6th grade middle school students, comic book art style with clear details and good contrast. Show whatever best illustrates the meaning - this could be one person, multiple people, or no people at all. Avoid stereotypes.`;
+
+        // Helper function to try OpenAI as fallback
+        const tryOpenAI = async (reason) => {
+          const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
+
+          if (!openaiKey || openaiKey === 'your_openai_key_here') {
+            throw new Error(`Nano Banana failed (${reason}) and no OpenAI API key configured`);
           }
-          
-          // Use Nano Banana (gemini-2.5-flash-image) for image generation
-          const imgResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
+
+          console.log(`Nano Banana failed (${reason}), trying OpenAI gpt-image-1-mini for "${wordObj.word}"`);
+
+          const dalleResponse = await fetch(
+            'https://api.openai.com/v1/images/generations',
             {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openaiKey}`
               },
               body: JSON.stringify({
-                contents: [{
-                  parts: [{
-                    text: imagePrompt
-                  }]
-                }],
-                generationConfig: {
-                  temperature: 0.8,
-                  maxOutputTokens: 8192,
-                }
+                model: 'gpt-image-1-mini',
+                prompt: imagePrompt,
+                size: '1024x1024',
+                quality: 'standard'
               })
             }
           );
-          
-          if (!imgResponse.ok) {
-            const errorData = await imgResponse.json().catch(() => ({}));
-            console.error(`Nano Banana error for "${wordObj.word}":`, imgResponse.status, errorData);
-            
-            // If rate limited (429 or 403), try OpenAI as backup
-            if (imgResponse.status === 429 || imgResponse.status === 403) {
-              const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
-              
-              if (openaiKey && openaiKey !== 'your_openai_key_here') {
-                console.log(`Nano Banana rate limited, trying OpenAI gpt-image-1 for "${wordObj.word}"`);
-                
-                try {
-                  const dalleResponse = await fetch(
-                    'https://api.openai.com/v1/images/generations',
-                    {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${openaiKey}`
-                      },
-                      body: JSON.stringify({
-                        model: 'dall-e-3',
-                        prompt: imagePrompt,
-                        size: '1024x1024',
-                        quality: 'standard'
-                      })
-                    }
-                  );
-                  
-                  if (dalleResponse.ok) {
-                    const dalleData = await dalleResponse.json();
-                    console.log('OpenAI response:', dalleData);
-                    if (dalleData.data && dalleData.data[0] && dalleData.data[0].url) {
-                      console.log(`OpenAI image generated for "${wordObj.word}"`);
-                      wordsWithImages.push({
-                        ...wordObj,
-                        image: dalleData.data[0].url
-                      });
-                      continue;
-                    }
-                  } else {
-                    const errorData = await dalleResponse.json().catch(() => ({}));
-                    console.error(`OpenAI error for "${wordObj.word}":`, dalleResponse.status, errorData);
+
+          if (!dalleResponse.ok) {
+            const errorData = await dalleResponse.json().catch(() => ({}));
+            throw new Error(`OpenAI also failed: ${dalleResponse.status} - ${JSON.stringify(errorData)}`);
+          }
+
+          const dalleData = await dalleResponse.json();
+          console.log('OpenAI response:', dalleData);
+
+          if (!dalleData.data || !dalleData.data[0] || !dalleData.data[0].url) {
+            throw new Error('OpenAI returned invalid response - no image URL');
+          }
+
+          console.log(`✓ OpenAI image generated successfully for "${wordObj.word}"`);
+          return dalleData.data[0].url;
+        };
+
+        try {
+          // Try Nano Banana first (Google Gemini image generation)
+          console.log(`Generating image ${index + 1}/${lesson.words.length} for "${wordObj.word}" using Nano Banana`);
+
+          // Add delay between requests to avoid rate limiting (except for first request)
+          if (index > 0) {
+            await new Promise(resolve => setTimeout(resolve, 12000)); // 12 second delay between requests for Nano Banana
+          }
+
+          let imageUrl = null;
+
+          try {
+            // Use Nano Banana (gemini-2.5-flash-image) for image generation
+            const imgResponse = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  contents: [{
+                    parts: [{
+                      text: imagePrompt
+                    }]
+                  }],
+                  generationConfig: {
+                    temperature: 0.8,
+                    maxOutputTokens: 8192,
                   }
-                } catch (openaiError) {
-                  console.error(`OpenAI exception for "${wordObj.word}":`, openaiError);
-                }
+                })
               }
-              
-              // Final fallback to Pollinations
-              console.log(`Using Pollinations.ai for "${wordObj.word}"`);
-              const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=1024&height=1024&nologo=true&model=flux&enhance=true&seed=${Date.now() + index}`;
-              wordsWithImages.push({
-                ...wordObj,
-                image: pollinationsUrl
-              });
-              continue;
+            );
+
+            if (!imgResponse.ok) {
+              const errorData = await imgResponse.json().catch(() => ({}));
+              console.error(`Nano Banana error for "${wordObj.word}":`, imgResponse.status, errorData);
+              // Try OpenAI for ANY error from Nano Banana
+              imageUrl = await tryOpenAI(`HTTP ${imgResponse.status}`);
+            } else {
+              const imgData = await imgResponse.json();
+              console.log(`Image response for "${wordObj.word}":`, imgData);
+
+              // Extract the base64 image from the response
+              if (imgData.candidates && imgData.candidates[0] && imgData.candidates[0].content) {
+                const parts = imgData.candidates[0].content.parts;
+                const imagePart = parts.find(part => part.inlineData && part.inlineData.mimeType.startsWith('image/'));
+
+                if (imagePart && imagePart.inlineData) {
+                  imageUrl = `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+                  console.log(`✓ Nano Banana image generated successfully for "${wordObj.word}"`);
+                } else {
+                  console.warn(`No image data in Nano Banana response for "${wordObj.word}"`);
+                  // Try OpenAI if Nano Banana returned success but no image
+                  imageUrl = await tryOpenAI('no image data in response');
+                }
+              } else {
+                console.warn(`Invalid response structure from Nano Banana for "${wordObj.word}"`);
+                // Try OpenAI if response structure is invalid
+                imageUrl = await tryOpenAI('invalid response structure');
+              }
             }
-            
-            throw new Error(`Image generation failed: ${imgResponse.status}`);
+          } catch (nanaBananaError) {
+            console.error(`Nano Banana exception for "${wordObj.word}":`, nanaBananaError);
+            // Try OpenAI for ANY exception from Nano Banana
+            imageUrl = await tryOpenAI('exception: ' + nanaBananaError.message);
           }
-          
-          const imgData = await imgResponse.json();
-          console.log(`Image response for "${wordObj.word}":`, imgData);
-          
-          // Extract the base64 image from the response
-          if (imgData.candidates && imgData.candidates[0] && imgData.candidates[0].content) {
-            const parts = imgData.candidates[0].content.parts;
-            const imagePart = parts.find(part => part.inlineData && part.inlineData.mimeType.startsWith('image/'));
-            
-            if (imagePart && imagePart.inlineData) {
-              wordsWithImages.push({
-                ...wordObj,
-                image: `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`
-              });
-              continue;
-            }
+
+          // Add the word with image to the list
+          if (imageUrl) {
+            wordsWithImages.push({
+              ...wordObj,
+              image: imageUrl
+            });
+          } else {
+            throw new Error(`Failed to generate image for "${wordObj.word}" - both Nano Banana and OpenAI failed`);
           }
-          
-          console.warn(`No image in Nano Banana response for "${wordObj.word}", using Pollinations.ai fallback`);
-          // Use the full prompt for Pollinations fallback with higher resolution
-          const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=1024&height=1024&nologo=true&model=flux&enhance=true&seed=${Date.now() + index}`;
-          wordsWithImages.push({
-            ...wordObj,
-            image: pollinationsUrl
-          });
-          
+
         } catch (error) {
-          console.error(`Error generating image for ${wordObj.word}:`, error);
-          // Fallback to Pollinations.ai (free, no rate limits) with higher resolution
-          const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=1024&height=1024&nologo=true&model=flux&enhance=true&seed=${Date.now() + index}`;
-          wordsWithImages.push({
-            ...wordObj,
-            image: pollinationsUrl
-          });
+          console.error(`FATAL: Could not generate image for "${wordObj.word}":`, error);
+          throw new Error(`Image generation failed for "${wordObj.word}": ${error.message}`);
         }
       }
 
@@ -949,7 +1094,7 @@ RULES:
       const completedLesson = { ...lesson, words: wordsWithImages };
       setLessonData(completedLesson);
 
-      // Auto-save the created lesson for teacher
+      // Auto-save the created lesson to GitHub
       const lessonId = wordList.join('-').toLowerCase().replace(/[^a-z0-9-]/g, '');
       const lessonToSave = {
         id: lessonId,
@@ -960,32 +1105,8 @@ RULES:
         lessonData: completedLesson
       };
 
-      // Save to local storage
-      if (typeof window.storage !== 'undefined') {
-        try {
-          await window.storage.set(`lesson:${Date.now()}`, JSON.stringify(lessonToSave));
-          console.log('Lesson auto-saved locally');
-
-          // Reload saved lessons list
-          const keys = await window.storage.list('lesson:');
-          if (keys && keys.keys) {
-            const lessons = await Promise.all(
-              keys.keys.map(async (key) => {
-                const result = await window.storage.get(key);
-                return result ? { key, ...JSON.parse(result.value) } : null;
-              })
-            );
-            setSavedLessons(lessons.filter(Boolean));
-          }
-        } catch (error) {
-          console.error('Error auto-saving lesson locally:', error);
-        }
-      }
-
-      // Save to GitHub if enabled
-      if (githubAutoSave) {
-        await saveLessonToGitHub(lessonToSave, lessonId);
-      }
+      // Save to GitHub (always enabled)
+      await saveLessonToGitHub(lessonToSave, lessonId);
 
       setStep('preteach');
     } catch (imageError) {
@@ -1127,37 +1248,20 @@ RULES:
             />
           </div>
 
-          {/* GitHub Auto-Save Settings */}
+          {/* GitHub Auto-Save Status */}
           {import.meta.env.VITE_GITHUB_TOKEN ? (
-            <div className="mb-6 p-4 bg-purple-50 border-2 border-purple-300 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-gray-800 mb-1">GitHub Auto-Save</h3>
-                  <p className="text-sm text-gray-600">
-                    Automatically save lessons to GitHub for easy sharing
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={githubAutoSave}
-                    onChange={(e) => setGithubAutoSave(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                </label>
-              </div>
-              {githubSaveStatus && (
-                <p className="mt-2 text-sm font-semibold text-purple-700">
+            githubSaveStatus && (
+              <div className="mb-6 p-4 bg-purple-50 border-2 border-purple-300 rounded-lg">
+                <p className="text-sm font-semibold text-purple-700">
                   {githubSaveStatus}
                 </p>
-              )}
-            </div>
+              </div>
+            )
           ) : (
             <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-300 rounded-lg">
               <h3 className="font-semibold text-gray-800 mb-2">💡 Want Automatic Deployment?</h3>
               <p className="text-sm text-gray-600 mb-3">
-                Set up GitHub Auto-Save to automatically deploy lessons when you create them. 
+                Set up GitHub Auto-Save to automatically deploy lessons when you create them.
                 No more manual exports or deployments!
               </p>
               <a
@@ -1793,6 +1897,28 @@ RULES:
                   </p>
                 </div>
               )}
+
+              {/* Check if all comprehension questions have been answered */}
+              {(() => {
+                const totalQuestions = lessonData.practice.comprehension.length;
+                const answeredQuestions = Object.keys(comprehensionAnswers).filter(
+                  key => comprehensionAnswers[key] && comprehensionAnswers[key].trim()
+                ).length;
+                const allAnswered = answeredQuestions === totalQuestions && totalQuestions > 0;
+
+                return allAnswered && (
+                  <div className="mb-6 p-6 bg-gradient-to-r from-green-100 to-blue-100 border-4 border-green-500 rounded-lg text-center">
+                    <div className="text-6xl mb-4">🎉</div>
+                    <h3 className="text-3xl font-bold text-green-800 mb-3">Congratulations!</h3>
+                    <p className="text-xl text-gray-700 mb-4">
+                      You've completed all {totalQuestions} comprehension questions! Great work!
+                    </p>
+                    <p className="text-lg text-gray-600">
+                      You've finished the entire lesson. Keep up the excellent work! 🌟
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* Comprehension Questions */}
               {lessonData.practice.comprehension.map((q, idx) => (
