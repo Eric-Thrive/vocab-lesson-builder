@@ -28,6 +28,10 @@ const VocabLessonBuilder = () => {
   const [comprehensionFeedback, setComprehensionFeedback] = useState({});
   const [checkingAnswer, setCheckingAnswer] = useState(null);
   const [githubSaveStatus, setGithubSaveStatus] = useState('');
+  const [customDirectory, setCustomDirectory] = useState('public/lessons');
+  const [customFilename, setCustomFilename] = useState('');
+  const [customLessonName, setCustomLessonName] = useState('');
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
 
   // Load lesson from URL on mount
   React.useEffect(() => {
@@ -56,7 +60,24 @@ const VocabLessonBuilder = () => {
   // Load lesson from GitHub repo
   const loadLessonFromGitHub = async (lessonId) => {
     try {
-      const response = await fetch(`/lessons/${lessonId}.json`);
+      // First try to find the lesson in the index to get its full path
+      let lessonPath = `/lessons/${lessonId}.json`;
+
+      try {
+        const indexResponse = await fetch('/lessons/index.json');
+        if (indexResponse.ok) {
+          const index = await indexResponse.json();
+          const lessonEntry = index.lessons?.find(l => l.id === lessonId);
+          if (lessonEntry && lessonEntry.file) {
+            // Use the full path from index
+            lessonPath = lessonEntry.file.startsWith('/') ? lessonEntry.file : `/lessons/${lessonEntry.file}`;
+          }
+        }
+      } catch (e) {
+        console.log('Could not load index, using default path');
+      }
+
+      const response = await fetch(lessonPath);
       if (!response.ok) {
         throw new Error('Lesson not found');
       }
@@ -71,7 +92,7 @@ const VocabLessonBuilder = () => {
   };
 
   // Save lesson to GitHub repo
-  const saveLessonToGitHub = async (lessonData, lessonId) => {
+  const saveLessonToGitHub = async (lessonData, lessonId, customDir = null, customFile = null) => {
     const token = import.meta.env.VITE_GITHUB_TOKEN;
     const owner = import.meta.env.VITE_GITHUB_OWNER;
     const repo = import.meta.env.VITE_GITHUB_REPO;
@@ -85,7 +106,10 @@ const VocabLessonBuilder = () => {
     try {
       setGithubSaveStatus('Saving to GitHub...');
 
-      const path = `public/lessons/${lessonId}.json`;
+      // Use custom directory and filename if provided, otherwise use defaults
+      const directory = customDir || 'public/lessons';
+      const filename = customFile || `${lessonId}.json`;
+      const path = `${directory}/${filename}`;
       const content = btoa(JSON.stringify(lessonData, null, 2));
 
       // Check if file exists to get SHA
@@ -133,7 +157,7 @@ const VocabLessonBuilder = () => {
       }
 
       // Update the index.json file
-      await updateLessonIndex(lessonId, lessonData, token, owner, repo, branch);
+      await updateLessonIndex(lessonId, lessonData, token, owner, repo, branch, directory, filename);
 
       setGithubSaveStatus('✓ Saved to GitHub!');
       setTimeout(() => setGithubSaveStatus(''), 3000);
@@ -148,7 +172,7 @@ const VocabLessonBuilder = () => {
   };
 
   // Update the lessons index file in GitHub
-  const updateLessonIndex = async (lessonId, lessonData, token, owner, repo, branch) => {
+  const updateLessonIndex = async (lessonId, lessonData, token, owner, repo, branch, directory = 'public/lessons', filename = null) => {
     try {
       const indexPath = 'public/lessons/index.json';
 
@@ -180,13 +204,17 @@ const VocabLessonBuilder = () => {
       // Remove existing entry for this lesson if it exists
       currentIndex.lessons = currentIndex.lessons.filter(lesson => lesson.id !== lessonId);
 
-      // Add new/updated lesson entry
+      // Add new/updated lesson entry with full path
+      const finalFilename = filename || `${lessonId}.json`;
+      const fullPath = directory === 'public/lessons' ? finalFilename : `${directory}/${finalFilename}`;
+
       currentIndex.lessons.push({
         id: lessonId,
         name: lessonData.name,
         description: lessonData.description || `Vocabulary lesson with ${lessonData.lessonData?.words?.length || 0} words`,
         date: lessonData.date || new Date().toISOString(),
-        file: `${lessonId}.json`
+        file: fullPath,
+        directory: directory
       });
 
       // Sort by date (newest first)
@@ -365,14 +393,67 @@ const VocabLessonBuilder = () => {
 
   const loadLesson = async (lessonKey) => {
     try {
-      const result = await window.storage.get(lessonKey);
-      if (result) {
-        const lesson = JSON.parse(result.value);
-        setWords(lesson.words);
-        setLessonData(lesson.lessonData);
-        setStep('preteach');
-        setShowSaved(false);
+      // First, try to find the lesson in the savedLessons array (from GitHub)
+      const githubLesson = savedLessons.find(l => l.key === lessonKey || l.id === lessonKey);
+      
+      if (githubLesson) {
+        // If lesson has full data already loaded
+        if (githubLesson.words && githubLesson.lessonData) {
+          setWords(githubLesson.words);
+          setLessonData(githubLesson.lessonData);
+          setStep('preteach');
+          setShowSaved(false);
+          return;
+        }
+        
+        // If lesson only has metadata, fetch the full lesson file
+        if (githubLesson.file) {
+          try {
+            const filename = githubLesson.file.replace('public/lessons/', '');
+            const response = await fetch(`/lessons/${filename}`);
+            if (response.ok) {
+              const lesson = await response.json();
+              setWords(lesson.words);
+              setLessonData(lesson.lessonData);
+              setStep('preteach');
+              setShowSaved(false);
+              return;
+            }
+          } catch (fetchError) {
+            console.error('Error fetching lesson file:', fetchError);
+          }
+        }
       }
+      
+      // Fallback: try to load from local storage
+      if (typeof window.storage !== 'undefined') {
+        const result = await window.storage.get(lessonKey);
+        if (result) {
+          const lesson = JSON.parse(result.value);
+          setWords(lesson.words);
+          setLessonData(lesson.lessonData);
+          setStep('preteach');
+          setShowSaved(false);
+          return;
+        }
+      }
+      
+      // If not found, try to fetch directly by ID
+      try {
+        const response = await fetch(`/lessons/${lessonKey}.json`);
+        if (response.ok) {
+          const lesson = await response.json();
+          setWords(lesson.words);
+          setLessonData(lesson.lessonData);
+          setStep('preteach');
+          setShowSaved(false);
+          return;
+        }
+      } catch (fetchError) {
+        console.error('Error fetching lesson from server:', fetchError);
+      }
+      
+      alert('Could not load lesson');
     } catch (error) {
       console.error('Error loading lesson:', error);
       alert('Error loading lesson');
@@ -750,6 +831,30 @@ Be warm and use very simple language.`;
     setImageUrl('');
   };
 
+  // Show save dialog before generating lesson
+  const handleCreateLesson = () => {
+    console.log('handleCreateLesson called');
+    console.log('GitHub token exists:', !!import.meta.env.VITE_GITHUB_TOKEN);
+
+    if (import.meta.env.VITE_GITHUB_TOKEN) {
+      // Set default values for the dialog
+      const wordList = words.split('\n').filter(w => w.trim()).slice(0, 10);
+      const defaultId = wordList.join('-').toLowerCase().replace(/[^a-z0-9-]/g, '');
+      const defaultName = `Lesson - ${wordList.slice(0, 3).join(', ')}${wordList.length > 3 ? '...' : ''}`;
+
+      console.log('Setting dialog values:', { defaultName, defaultId });
+      setCustomLessonName(defaultName);
+      setCustomFilename(`${defaultId}.json`);
+      setCustomDirectory('public/lessons');
+      setShowSaveDialog(true);
+      console.log('Dialog should be visible now');
+    } else {
+      // No GitHub configured, just generate directly
+      console.log('No GitHub token, generating directly');
+      generateLesson();
+    }
+  };
+
   const generateLesson = async () => {
     setLoading(true);
     const wordList = words.split('\n').filter(w => w.trim()).slice(0, 10);
@@ -1094,19 +1199,34 @@ RULES:
       const completedLesson = { ...lesson, words: wordsWithImages };
       setLessonData(completedLesson);
 
-      // Auto-save the created lesson to GitHub
+      // Prepare lesson for saving
       const lessonId = wordList.join('-').toLowerCase().replace(/[^a-z0-9-]/g, '');
+      const lessonName = customLessonName.trim() || `Lesson - ${wordList.slice(0, 3).join(', ')}${wordList.length > 3 ? '...' : ''}`;
+
       const lessonToSave = {
         id: lessonId,
-        name: `Lesson - ${wordList.slice(0, 3).join(', ')}...`,
+        name: lessonName,
         description: `Vocabulary lesson with ${completedLesson.words.length} words`,
         date: new Date().toISOString(),
         words: words,
         lessonData: completedLesson
       };
 
-      // Save to GitHub (always enabled)
-      await saveLessonToGitHub(lessonToSave, lessonId);
+      // Save to GitHub if configured
+      if (import.meta.env.VITE_GITHUB_TOKEN) {
+        // Validate filename
+        let finalFilename = customFilename.trim();
+        if (finalFilename && !finalFilename.endsWith('.json')) {
+          finalFilename += '.json';
+        }
+
+        await saveLessonToGitHub(
+          lessonToSave,
+          lessonId,
+          customDirectory.trim() || 'public/lessons',
+          finalFilename || null
+        );
+      }
 
       setStep('preteach');
     } catch (imageError) {
@@ -1142,14 +1262,103 @@ RULES:
     setSelectedWord(null);
   };
 
+  // Render save dialog as overlay (outside step-specific rendering)
+  const renderSaveDialog = () => {
+    if (!showSaveDialog) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4">
+          <h2 className="text-2xl font-bold text-gray-800 mb-4">Name Your Lesson</h2>
+          <p className="text-gray-600 mb-6">Customize your lesson details before creation:</p>
+
+          <div className="mb-4">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Lesson Name: *
+            </label>
+            <input
+              type="text"
+              value={customLessonName}
+              onChange={(e) => setCustomLessonName(e.target.value)}
+              placeholder="My Awesome Vocabulary Lesson"
+              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              This name will appear in your lesson list
+            </p>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Directory Path:
+            </label>
+            <input
+              type="text"
+              value={customDirectory}
+              onChange={(e) => setCustomDirectory(e.target.value)}
+              placeholder="public/lessons"
+              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              e.g., public/lessons/animals or public/lessons/grade-1
+            </p>
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Filename:
+            </label>
+            <input
+              type="text"
+              value={customFilename}
+              onChange={(e) => setCustomFilename(e.target.value)}
+              placeholder="my-lesson.json"
+              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Must end with .json (auto-added if missing)
+            </p>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowSaveDialog(false)}
+              className="flex-1 bg-gray-300 text-gray-700 py-3 px-6 rounded-lg font-semibold hover:bg-gray-400 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                // Validate lesson name is provided
+                if (!customLessonName.trim()) {
+                  alert('Please enter a lesson name');
+                  return;
+                }
+
+                setShowSaveDialog(false);
+                // Trigger lesson generation which will use the custom values
+                generateLesson();
+              }}
+              className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 transition"
+            >
+              Create Lesson
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (step === 'input') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-8">
-        <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-8">
-          <div className="flex items-center gap-3 mb-6">
-            <Book className="w-8 h-8 text-blue-600" />
-            <h1 className="text-3xl font-bold text-gray-800">Vocabulary Lesson Builder</h1>
-          </div>
+      <>
+        {renderSaveDialog()}
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-8">
+          <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-8">
+            <div className="flex items-center gap-3 mb-6">
+              <Book className="w-8 h-8 text-blue-600" />
+              <h1 className="text-3xl font-bold text-gray-800">Vocabulary Lesson Builder</h1>
+            </div>
 
           {/* Saved Lessons Section */}
           <div className="mb-6">
@@ -1203,7 +1412,7 @@ RULES:
                                 {new Date(lesson.date).toLocaleDateString()}
                               </p>
                               <p className="text-sm text-gray-500 mt-1">
-                                Words: {lesson.words.split('\n').filter(w => w.trim()).join(', ')}
+                                Words: {lesson.words ? lesson.words.split('\n').filter(w => w.trim()).join(', ') : 'N/A'}
                               </p>
                             </div>
                             <div className="flex gap-2 ml-4">
@@ -1279,7 +1488,7 @@ RULES:
           )}
 
           <button
-            onClick={generateLesson}
+            onClick={handleCreateLesson}
             disabled={!words.trim() || loading}
             className="w-full bg-blue-600 text-white py-4 px-6 rounded-lg text-xl font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
           >
@@ -1321,6 +1530,7 @@ RULES:
           )}
         </div>
       </div>
+      </>
     );
   }
 
