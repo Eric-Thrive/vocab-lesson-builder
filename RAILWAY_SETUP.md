@@ -42,7 +42,7 @@ Railway will auto-detect it's a Node.js app. It should automatically:
 2. Click **"New Variable"**
 3. Add:
    - **Variable**: `VITE_GOOGLE_API_KEY`
-   - **Value**: `AIzaSyBBh59yBJ97CGTId116p4MEJJFp7e1ykV0`
+   - **Value**: `YOUR_GOOGLE_API_KEY_HERE`
 4. Click **"Add"**
 
 ### 5. Deploy
