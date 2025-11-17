@@ -80,10 +80,10 @@ const VocabLessonBuilder = () => {
   };
 
   // Load all lessons for library
-  const loadLessonLibrary = async () => {
+  const loadLessonLibrary = async (includeArchived = showArchivedLessons) => {
     try {
       setLoadingLibrary(true);
-      const lessons = await getAllLessons(50, showArchivedLessons);
+      const lessons = await getAllLessons(50, includeArchived);
       setLessonLibrary(lessons);
     } catch (error) {
       console.error('Error loading lesson library:', error);
@@ -1145,8 +1145,9 @@ IMPORTANT: Do NOT include any text, words, letters, or labels in the image. The 
                     id="showArchived"
                     checked={showArchivedLessons}
                     onChange={(e) => {
-                      setShowArchivedLessons(e.target.checked);
-                      loadLessonLibrary();
+                      const newValue = e.target.checked;
+                      setShowArchivedLessons(newValue);
+                      loadLessonLibrary(newValue);
                     }}
                     className="w-5 h-5 text-blue-600 rounded"
                   />
