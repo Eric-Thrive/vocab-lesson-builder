@@ -836,15 +836,15 @@ RULES:
         
         // Define imagePrompt outside try block so it's available in catch
         const exampleSentence = wordObj.examples[0] || wordObj.word;
-        const imagePrompt = `Create a clear, simple graphic novel illustration for the vocabulary word "${wordObj.word}" which means "${wordObj.definition}".
+        const imagePrompt = `Create a graphic novel style illustration for the vocabulary word "${wordObj.word}" which means "${wordObj.definition}".
 
 Scene to show: ${exampleSentence}
 
-Style: Bold lines, comic book art, clear composition, age-appropriate for 6th grade. Make the main concept VERY OBVIOUS and CENTERED in the image - avoid ambiguous or background details. If illustrating "${wordObj.word}", emphasize the action or object that represents this word clearly and prominently.
+Style: GRAPHIC NOVEL / COMIC BOOK ART with bold ink lines, dynamic angles, and high contrast. Use clean linework, solid colors with cel-shading, and dramatic composition like you'd see in a modern graphic novel or comic book. Age-appropriate for 6th grade middle schoolers.
 
-Show whatever best illustrates the meaning - this could be one person, multiple people, or no people at all. Avoid stereotypes.
+Make the main concept VERY OBVIOUS and CENTERED in the image - avoid ambiguous or background details. If illustrating "${wordObj.word}", emphasize the action or object that represents this word clearly and prominently. Show whatever best illustrates the meaning - this could be one person, multiple people, or no people at all. Avoid stereotypes.
 
-IMPORTANT: Do NOT include any text, words, letters, or labels in the image. The image must be purely visual with no written text of any kind.`;
+IMPORTANT: Do NOT include any text, words, letters, sound effects (like "POW!" or "BANG!"), speech bubbles, or labels in the image. The image must be purely visual with no written text of any kind.`;
 
         // Helper function to try OpenAI as fallback
         const tryOpenAI = async (reason) => {
