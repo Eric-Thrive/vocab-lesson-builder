@@ -102,7 +102,7 @@ const VocabLessonBuilder = () => {
     try {
       await deleteLesson(lessonId);
       alert(`✓ Lesson "${lessonTitle}" has been deleted.`);
-      loadLessonLibrary(); // Reload the library
+      await loadLessonLibrary(showArchivedLessons); // Reload the library with current filter state
     } catch (error) {
       console.error('Error deleting lesson:', error);
       alert(`Failed to delete lesson: ${error.message}`);
@@ -114,7 +114,7 @@ const VocabLessonBuilder = () => {
     try {
       await archiveLesson(lessonId);
       alert(`✓ Lesson "${lessonTitle}" has been archived.`);
-      loadLessonLibrary(); // Reload the library
+      await loadLessonLibrary(showArchivedLessons); // Reload the library with current filter state
     } catch (error) {
       console.error('Error archiving lesson:', error);
       alert(`Failed to archive lesson: ${error.message}`);
@@ -126,7 +126,7 @@ const VocabLessonBuilder = () => {
     try {
       await unarchiveLesson(lessonId);
       alert(`✓ Lesson "${lessonTitle}" has been restored from archive.`);
-      loadLessonLibrary(); // Reload the library
+      await loadLessonLibrary(showArchivedLessons); // Reload the library with current filter state
     } catch (error) {
       console.error('Error unarchiving lesson:', error);
       alert(`Failed to unarchive lesson: ${error.message}`);
