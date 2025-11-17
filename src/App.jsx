@@ -795,7 +795,7 @@ RULES:
         
         // Define imagePrompt outside try block so it's available in catch
         const exampleSentence = wordObj.examples[0] || wordObj.word;
-        const imagePrompt = `A graphic novel style illustration showing: ${exampleSentence}. Bold lines, dynamic composition, age-appropriate for 6th grade middle school students, comic book art style with clear details and good contrast. Show whatever best illustrates the meaning - this could be one person, multiple people, or no people at all. Avoid stereotypes.`;
+        const imagePrompt = `A graphic novel style illustration showing: ${exampleSentence}. Bold lines, dynamic composition, age-appropriate for 6th grade middle school students, comic book art style with clear details and good contrast. Show whatever best illustrates the meaning - this could be one person, multiple people, or no people at all. Avoid stereotypes. IMPORTANT: Do NOT include any text, words, letters, or labels in the image. The image must be purely visual with no written text of any kind.`;
 
         // Helper function to try OpenAI as fallback
         const tryOpenAI = async (reason) => {
