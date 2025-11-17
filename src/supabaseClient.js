@@ -59,15 +59,42 @@ export const loadLesson = async (lessonId) => {
 };
 
 // Get all lessons (for lesson library)
-export const getAllLessons = async (limit = 50) => {
-  const { data, error } = await supabase
+export const getAllLessons = async (limit = 50, includeArchived = false) => {
+  let query = supabase
     .from('lessons')
-    .select('id, lesson_id, title, created_at, view_count')
+    .select('id, lesson_id, title, created_at, view_count, archived')
     .order('created_at', { ascending: false })
     .limit(limit);
 
+  // Filter out archived lessons by default
+  if (!includeArchived) {
+    query = query.or('archived.is.null,archived.eq.false');
+  }
+
+  const { data, error } = await query;
+
   if (error) throw error;
   return data;
+};
+
+// Archive lesson
+export const archiveLesson = async (lessonId) => {
+  const { error } = await supabase
+    .from('lessons')
+    .update({ archived: true, archived_at: new Date().toISOString() })
+    .eq('lesson_id', lessonId);
+
+  if (error) throw error;
+};
+
+// Unarchive lesson
+export const unarchiveLesson = async (lessonId) => {
+  const { error } = await supabase
+    .from('lessons')
+    .update({ archived: false, archived_at: null })
+    .eq('lesson_id', lessonId);
+
+  if (error) throw error;
 };
 
 // Delete lesson

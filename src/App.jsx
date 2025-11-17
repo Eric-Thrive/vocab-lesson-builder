@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Book, Image, CheckCircle, RefreshCw, Share2, Copy, Library, Trash2 } from 'lucide-react';
-import { saveLesson, loadLesson as loadLessonFromDB, getAllLessons, deleteLesson } from './supabaseClient';
+import { Book, Image, CheckCircle, RefreshCw, Share2, Copy, Library, Trash2, Archive, ArchiveRestore } from 'lucide-react';
+import { saveLesson, loadLesson as loadLessonFromDB, getAllLessons, deleteLesson, archiveLesson, unarchiveLesson } from './supabaseClient';
 
 const VocabLessonBuilder = () => {
   const [step, setStep] = useState('input'); // input, preteach, story, practice
@@ -17,6 +17,7 @@ const VocabLessonBuilder = () => {
   const [editingDefinition, setEditingDefinition] = useState(null);
   const [editedDefinition, setEditedDefinition] = useState('');
   const [deletingLesson, setDeletingLesson] = useState(null);
+  const [showArchivedLessons, setShowArchivedLessons] = useState(false);
   const [imageProgress, setImageProgress] = useState({ current: 0, total: 0, word: '' });
   const [expandedWordIndex, setExpandedWordIndex] = useState(0); // Accordion state - start with first word expanded
   const [matchingItems, setMatchingItems] = useState([]); // For practice matching game
@@ -82,13 +83,53 @@ const VocabLessonBuilder = () => {
   const loadLessonLibrary = async () => {
     try {
       setLoadingLibrary(true);
-      const lessons = await getAllLessons();
+      const lessons = await getAllLessons(50, showArchivedLessons);
       setLessonLibrary(lessons);
     } catch (error) {
       console.error('Error loading lesson library:', error);
       alert('Could not load lesson library. Please try again.');
     } finally {
       setLoadingLibrary(false);
+    }
+  };
+
+  // Delete lesson handler
+  const handleDeleteLesson = async (lessonId, lessonTitle) => {
+    if (!window.confirm(`Are you sure you want to permanently DELETE "${lessonTitle}"?\n\nThis cannot be undone!`)) {
+      return;
+    }
+
+    try {
+      await deleteLesson(lessonId);
+      alert(`✓ Lesson "${lessonTitle}" has been deleted.`);
+      loadLessonLibrary(); // Reload the library
+    } catch (error) {
+      console.error('Error deleting lesson:', error);
+      alert(`Failed to delete lesson: ${error.message}`);
+    }
+  };
+
+  // Archive lesson handler
+  const handleArchiveLesson = async (lessonId, lessonTitle) => {
+    try {
+      await archiveLesson(lessonId);
+      alert(`✓ Lesson "${lessonTitle}" has been archived.`);
+      loadLessonLibrary(); // Reload the library
+    } catch (error) {
+      console.error('Error archiving lesson:', error);
+      alert(`Failed to archive lesson: ${error.message}`);
+    }
+  };
+
+  // Unarchive lesson handler
+  const handleUnarchiveLesson = async (lessonId, lessonTitle) => {
+    try {
+      await unarchiveLesson(lessonId);
+      alert(`✓ Lesson "${lessonTitle}" has been restored from archive.`);
+      loadLessonLibrary(); // Reload the library
+    } catch (error) {
+      console.error('Error unarchiving lesson:', error);
+      alert(`Failed to unarchive lesson: ${error.message}`);
     }
   };
 
@@ -1097,6 +1138,26 @@ IMPORTANT: Do NOT include any text, words, letters, or labels in the image. The 
             </div>
 
             {showLessonLibrary && (
+              <>
+                <div className="mb-3 flex items-center gap-2 bg-white p-3 rounded-lg border-2 border-gray-300">
+                  <input
+                    type="checkbox"
+                    id="showArchived"
+                    checked={showArchivedLessons}
+                    onChange={(e) => {
+                      setShowArchivedLessons(e.target.checked);
+                      loadLessonLibrary();
+                    }}
+                    className="w-5 h-5 text-blue-600 rounded"
+                  />
+                  <label htmlFor="showArchived" className="text-sm font-semibold text-gray-700 cursor-pointer">
+                    Show archived lessons
+                  </label>
+                </div>
+              </>
+            )}
+
+            {showLessonLibrary && (
               <div className="border-2 border-blue-300 rounded-lg p-4 max-h-96 overflow-y-auto mt-4 bg-blue-50">
                 {loadingLibrary ? (
                   <div className="text-center py-8">
@@ -1112,10 +1173,17 @@ IMPORTANT: Do NOT include any text, words, letters, or labels in the image. The 
                       All Lessons ({lessonLibrary.length})
                     </h3>
                     {lessonLibrary.map((lesson) => (
-                      <div key={lesson.id} className="bg-white p-4 rounded-lg border border-blue-200 hover:border-blue-400 transition">
+                      <div key={lesson.id} className={`bg-white p-4 rounded-lg border ${lesson.archived ? 'border-orange-300 bg-orange-50' : 'border-blue-200'} hover:border-blue-400 transition`}>
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
-                            <h3 className="font-bold text-lg text-gray-800">{lesson.title}</h3>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-bold text-lg text-gray-800">{lesson.title}</h3>
+                              {lesson.archived && (
+                                <span className="text-xs bg-orange-200 text-orange-800 px-2 py-1 rounded font-semibold">
+                                  ARCHIVED
+                                </span>
+                              )}
+                            </div>
                             <p className="text-sm text-gray-600">
                               {new Date(lesson.created_at).toLocaleDateString()}
                             </p>
@@ -1123,7 +1191,7 @@ IMPORTANT: Do NOT include any text, words, letters, or labels in the image. The 
                               Views: {lesson.view_count || 0}
                             </p>
                           </div>
-                          <div className="flex gap-2 ml-4">
+                          <div className="flex flex-wrap gap-2 ml-4">
                             <button
                               onClick={() => loadLessonFromSupabase(lesson.lesson_id)}
                               className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-semibold"
@@ -1140,6 +1208,33 @@ IMPORTANT: Do NOT include any text, words, letters, or labels in the image. The 
                             >
                               <Copy className="w-4 h-4" />
                               Share
+                            </button>
+                            {lesson.archived ? (
+                              <button
+                                onClick={() => handleUnarchiveLesson(lesson.lesson_id, lesson.title)}
+                                className="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700 text-sm font-semibold flex items-center gap-1"
+                                title="Restore from archive"
+                              >
+                                <ArchiveRestore className="w-4 h-4" />
+                                Restore
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleArchiveLesson(lesson.lesson_id, lesson.title)}
+                                className="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700 text-sm font-semibold flex items-center gap-1"
+                                title="Archive this lesson"
+                              >
+                                <Archive className="w-4 h-4" />
+                                Archive
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteLesson(lesson.lesson_id, lesson.title)}
+                              className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 text-sm font-semibold flex items-center gap-1"
+                              title="Permanently delete this lesson"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Delete
                             </button>
                           </div>
                         </div>
