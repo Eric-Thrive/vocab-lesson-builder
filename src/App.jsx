@@ -366,10 +366,23 @@ const VocabLessonBuilder = () => {
   };
 
   const createShareLink = () => {
-    // Generate a short lesson ID from the first few words
+    // Get the lesson ID from the URL (it's already there after saving to Supabase)
+    const urlParams = new URLSearchParams(window.location.search);
+    let lessonId = urlParams.get('lesson');
+
+    // Fallback: if no lesson ID in URL, generate it using the same logic as Supabase
+    if (!lessonId || lessonId.length > 100) {
+      // Import the generateLessonId function logic here
+      lessonId = words
+        .split('\n')
+        .filter(w => w.trim())
+        .slice(0, 3)
+        .map(w => w.trim().toLowerCase().replace(/[^a-z0-9]/g, '-'))
+        .join('-')
+        .substring(0, 50);
+    }
+
     const wordList = words.split('\n').filter(w => w.trim()).slice(0, 3);
-    const lessonId = wordList.join('-').toLowerCase().replace(/[^a-z0-9-]/g, '');
-    
     const lessonToShare = {
       id: lessonId,
       name: `Lesson - ${wordList.join(', ')}`,
@@ -377,15 +390,15 @@ const VocabLessonBuilder = () => {
       words: words,
       lessonData: lessonData
     };
-    
+
     // Create both short link (for GitHub-hosted lessons) and full link (legacy)
     const shortLink = `${window.location.origin}${window.location.pathname}?lesson=${lessonId}`;
     const encodedLesson = btoa(JSON.stringify({ words: words, lessonData: lessonData }));
     const fullLink = `${window.location.origin}${window.location.pathname}?lesson=${encodedLesson}`;
-    
+
     // Store the lesson data for download
     window.currentLessonForDownload = lessonToShare;
-    
+
     setShareLink(shortLink);
     setShowShareModal(true);
   };
