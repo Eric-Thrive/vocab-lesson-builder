@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Book, Image, CheckCircle, RefreshCw, Share2, Copy } from 'lucide-react';
+import { Book, Image, CheckCircle, RefreshCw, Share2, Copy, Library, Trash2 } from 'lucide-react';
+import { saveLesson, loadLesson as loadLessonFromDB, getAllLessons, deleteLesson } from './supabaseClient';
 
 const VocabLessonBuilder = () => {
   const [step, setStep] = useState('input'); // input, preteach, story, practice
@@ -12,8 +13,7 @@ const VocabLessonBuilder = () => {
   const [matchingAnswers, setMatchingAnswers] = useState({});
   const [selectedWord, setSelectedWord] = useState(null);
   const [showStory, setShowStory] = useState(false);
-  const [savedLessons, setSavedLessons] = useState([]);
-  const [showSaved, setShowSaved] = useState(false);
+
   const [editingDefinition, setEditingDefinition] = useState(null);
   const [editedDefinition, setEditedDefinition] = useState('');
   const [deletingLesson, setDeletingLesson] = useState(null);
@@ -32,6 +32,10 @@ const VocabLessonBuilder = () => {
   const [customFilename, setCustomFilename] = useState('');
   const [customLessonName, setCustomLessonName] = useState('');
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showLessonLibrary, setShowLessonLibrary] = useState(false);
+  const [lessonLibrary, setLessonLibrary] = useState([]);
+  const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const [supabaseSaveStatus, setSupabaseSaveStatus] = useState('');
 
   // Load lesson from URL on mount
   React.useEffect(() => {
@@ -41,8 +45,8 @@ const VocabLessonBuilder = () => {
     if (lessonParam) {
       // Check if it's a lesson ID (short format) or base64 data (legacy format)
       if (lessonParam.length < 100 && !lessonParam.includes('{')) {
-        // It's a lesson ID - fetch from GitHub
-        loadLessonFromGitHub(lessonParam);
+        // It's a lesson ID - fetch from Supabase
+        loadLessonFromSupabase(lessonParam);
       } else {
         // Legacy base64 format
         try {
@@ -57,37 +61,34 @@ const VocabLessonBuilder = () => {
     }
   }, []);
 
-  // Load lesson from GitHub repo
-  const loadLessonFromGitHub = async (lessonId) => {
+  // Load lesson from Supabase
+  const loadLessonFromSupabase = async (lessonId) => {
     try {
-      // First try to find the lesson in the index to get its full path
-      let lessonPath = `/lessons/${lessonId}.json`;
-
-      try {
-        const indexResponse = await fetch('/lessons/index.json');
-        if (indexResponse.ok) {
-          const index = await indexResponse.json();
-          const lessonEntry = index.lessons?.find(l => l.id === lessonId);
-          if (lessonEntry && lessonEntry.file) {
-            // Use the full path from index
-            lessonPath = lessonEntry.file.startsWith('/') ? lessonEntry.file : `/lessons/${lessonEntry.file}`;
-          }
-        }
-      } catch (e) {
-        console.log('Could not load index, using default path');
-      }
-
-      const response = await fetch(lessonPath);
-      if (!response.ok) {
-        throw new Error('Lesson not found');
-      }
-      const lesson = await response.json();
+      setLoading(true);
+      const lesson = await loadLessonFromDB(lessonId);
       setWords(lesson.words);
-      setLessonData(lesson.lessonData);
+      setLessonData(lesson.lesson_data);
       setStep('preteach');
+      setShowLessonLibrary(false); // Close the lesson library after loading
     } catch (error) {
-      console.error('Error loading lesson from GitHub:', error);
-      alert(`Could not load lesson "${lessonId}". Please check the lesson ID.`);
+      console.error('Error loading lesson from Supabase:', error);
+      alert(`Could not load lesson. Please try again.`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load all lessons for library
+  const loadLessonLibrary = async () => {
+    try {
+      setLoadingLibrary(true);
+      const lessons = await getAllLessons();
+      setLessonLibrary(lessons);
+    } catch (error) {
+      console.error('Error loading lesson library:', error);
+      alert('Could not load lesson library. Please try again.');
+    } finally {
+      setLoadingLibrary(false);
     }
   };
 
@@ -253,88 +254,10 @@ const VocabLessonBuilder = () => {
     }
   };
 
-  // Load saved lessons from GitHub on mount
+  // Load lesson library from Supabase on mount and show it by default
   React.useEffect(() => {
-    const loadSavedLessonsFromGitHub = async () => {
-      try {
-        // Try to fetch the index.json file that lists all lessons
-        const response = await fetch('/lessons/index.json');
-        if (response.ok) {
-          const index = await response.json();
-          if (index.lessons && Array.isArray(index.lessons)) {
-            setSavedLessons(index.lessons);
-            return;
-          }
-        }
-      } catch (error) {
-        console.log('Could not load index.json, trying directory listing...');
-      }
-
-      // Fallback: Try to get list from GitHub API directly
-      const token = import.meta.env.VITE_GITHUB_TOKEN;
-      const owner = import.meta.env.VITE_GITHUB_OWNER;
-      const repo = import.meta.env.VITE_GITHUB_REPO;
-      const branch = import.meta.env.VITE_GITHUB_BRANCH || 'main';
-
-      if (!token || !owner || !repo) {
-        console.log('GitHub credentials not configured, cannot load saved lessons from GitHub');
-        return;
-      }
-
-      try {
-        const response = await fetch(
-          `https://api.github.com/repos/${owner}/${repo}/contents/public/lessons?ref=${branch}`,
-          {
-            headers: {
-              'Authorization': `token ${token}`,
-              'Accept': 'application/vnd.github.v3+json'
-            }
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch lessons from GitHub');
-        }
-
-        const files = await response.json();
-
-        // Filter for JSON files and exclude index.json and README
-        const lessonFiles = files.filter(file =>
-          file.name.endsWith('.json') &&
-          file.name !== 'index.json' &&
-          file.name !== '.gitkeep'
-        );
-
-        // Fetch each lesson file
-        const lessons = await Promise.all(
-          lessonFiles.map(async (file) => {
-            try {
-              const lessonResponse = await fetch(`/lessons/${file.name}`);
-              if (lessonResponse.ok) {
-                const lesson = await lessonResponse.json();
-                return {
-                  key: file.name.replace('.json', ''),
-                  id: file.name.replace('.json', ''),
-                  name: lesson.name || file.name.replace('.json', ''),
-                  date: lesson.date || new Date().toISOString(),
-                  words: lesson.words || '',
-                  lessonData: lesson.lessonData || {}
-                };
-              }
-              return null;
-            } catch (error) {
-              console.error(`Error loading lesson ${file.name}:`, error);
-              return null;
-            }
-          })
-        );
-
-        setSavedLessons(lessons.filter(Boolean));
-      } catch (error) {
-        console.error('Error loading saved lessons from GitHub:', error);
-      }
-    };
-    loadSavedLessonsFromGitHub();
+    loadLessonLibrary();
+    setShowLessonLibrary(true); // Show lesson library by default
   }, []);
 
   // Auto-save student progress when answers change
@@ -391,216 +314,9 @@ const VocabLessonBuilder = () => {
     }
   }, [step, lessonData]);
 
-  const loadLesson = async (lessonKey) => {
-    try {
-      // First, try to find the lesson in the savedLessons array (from GitHub)
-      const githubLesson = savedLessons.find(l => l.key === lessonKey || l.id === lessonKey);
-      
-      if (githubLesson) {
-        // If lesson has full data already loaded
-        if (githubLesson.words && githubLesson.lessonData) {
-          setWords(githubLesson.words);
-          setLessonData(githubLesson.lessonData);
-          setStep('preteach');
-          setShowSaved(false);
-          return;
-        }
-        
-        // If lesson only has metadata, fetch the full lesson file
-        if (githubLesson.file) {
-          try {
-            const filename = githubLesson.file.replace('public/lessons/', '');
-            const response = await fetch(`/lessons/${filename}`);
-            if (response.ok) {
-              const lesson = await response.json();
-              setWords(lesson.words);
-              setLessonData(lesson.lessonData);
-              setStep('preteach');
-              setShowSaved(false);
-              return;
-            }
-          } catch (fetchError) {
-            console.error('Error fetching lesson file:', fetchError);
-          }
-        }
-      }
-      
-      // Fallback: try to load from local storage
-      if (typeof window.storage !== 'undefined') {
-        const result = await window.storage.get(lessonKey);
-        if (result) {
-          const lesson = JSON.parse(result.value);
-          setWords(lesson.words);
-          setLessonData(lesson.lessonData);
-          setStep('preteach');
-          setShowSaved(false);
-          return;
-        }
-      }
-      
-      // If not found, try to fetch directly by ID
-      try {
-        const response = await fetch(`/lessons/${lessonKey}.json`);
-        if (response.ok) {
-          const lesson = await response.json();
-          setWords(lesson.words);
-          setLessonData(lesson.lessonData);
-          setStep('preteach');
-          setShowSaved(false);
-          return;
-        }
-      } catch (fetchError) {
-        console.error('Error fetching lesson from server:', fetchError);
-      }
-      
-      alert('Could not load lesson');
-    } catch (error) {
-      console.error('Error loading lesson:', error);
-      alert('Error loading lesson');
-    }
-  };
 
-  const deleteLesson = async (lessonKey, lessonName) => {
-    console.log('Delete lesson clicked:', lessonKey);
-    setDeletingLesson(lessonKey);
-  };
 
-  const confirmDelete = async (lessonKey) => {
-    try {
-      await window.storage.delete(lessonKey);
-      setSavedLessons(savedLessons.filter(l => l.key !== lessonKey));
-      setDeletingLesson(null);
-      console.log('Lesson deleted successfully');
-    } catch (error) {
-      console.error('Error deleting lesson:', error);
-      setDeletingLesson(null);
-    }
-  };
 
-  const cancelDelete = () => {
-    setDeletingLesson(null);
-  };
-
-  const exportLessonToFile = async (lesson) => {
-    try {
-      const lessonToExport = {
-        name: lesson.name,
-        date: lesson.date,
-        words: lesson.words,
-        lessonData: lesson.lessonData
-      };
-
-      if ('showSaveFilePicker' in window) {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: `${lesson.name.replace(/[^a-z0-9]/gi, '_')}.json`,
-          types: [{
-            description: 'Vocabulary Lesson',
-            accept: { 'application/json': ['.json'] }
-          }]
-        });
-        
-        const writable = await handle.createWritable();
-        await writable.write(JSON.stringify(lessonToExport, null, 2));
-        await writable.close();
-        
-        alert(`✓ Lesson "${lesson.name}" exported successfully!`);
-      } else {
-        // Fallback: download as file
-        const blob = new Blob([JSON.stringify(lessonToExport, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${lesson.name.replace(/[^a-z0-9]/gi, '_')}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        
-        alert(`✓ Lesson "${lesson.name}" downloaded!`);
-      }
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log('User cancelled export');
-        return;
-      }
-      console.error('Error exporting lesson:', error);
-      alert('Error exporting lesson: ' + error.message);
-    }
-  };
-
-  const importLessonFromFile = async () => {
-    try {
-      if ('showOpenFilePicker' in window) {
-        const [handle] = await window.showOpenFilePicker({
-          types: [{
-            description: 'Vocabulary Lesson',
-            accept: { 'application/json': ['.json'] }
-          }],
-          multiple: false
-        });
-        
-        const file = await handle.getFile();
-        const text = await file.text();
-        const lesson = JSON.parse(text);
-        
-        // Save to storage
-        if (typeof window.storage !== 'undefined') {
-          await window.storage.set(`lesson:${Date.now()}`, JSON.stringify(lesson));
-          
-          // Reload saved lessons list
-          const keys = await window.storage.list('lesson:');
-          if (keys && keys.keys) {
-            const lessons = await Promise.all(
-              keys.keys.map(async (key) => {
-                const result = await window.storage.get(key);
-                return result ? { key, ...JSON.parse(result.value) } : null;
-              })
-            );
-            setSavedLessons(lessons.filter(Boolean));
-          }
-          
-          alert(`✓ Lesson "${lesson.name}" imported successfully!`);
-        }
-      } else {
-        // Fallback: use file input
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json';
-        input.onchange = async (e) => {
-          const file = e.target.files[0];
-          if (file) {
-            const text = await file.text();
-            const lesson = JSON.parse(text);
-            
-            // Save to storage
-            if (typeof window.storage !== 'undefined') {
-              await window.storage.set(`lesson:${Date.now()}`, JSON.stringify(lesson));
-              
-              // Reload saved lessons list
-              const keys = await window.storage.list('lesson:');
-              if (keys && keys.keys) {
-                const lessons = await Promise.all(
-                  keys.keys.map(async (key) => {
-                    const result = await window.storage.get(key);
-                    return result ? { key, ...JSON.parse(result.value) } : null;
-                  })
-                );
-                setSavedLessons(lessons.filter(Boolean));
-              }
-              
-              alert(`✓ Lesson "${lesson.name}" imported successfully!`);
-            }
-          }
-        };
-        input.click();
-      }
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log('User cancelled import');
-        return;
-      }
-      console.error('Error importing lesson:', error);
-      alert('Error importing lesson: ' + error.message);
-    }
-  };
 
   const exportCurrentLesson = async () => {
     if (!lessonData) return;
@@ -1199,33 +915,17 @@ RULES:
       const completedLesson = { ...lesson, words: wordsWithImages };
       setLessonData(completedLesson);
 
-      // Prepare lesson for saving
-      const lessonId = wordList.join('-').toLowerCase().replace(/[^a-z0-9-]/g, '');
-      const lessonName = customLessonName.trim() || `Lesson - ${wordList.slice(0, 3).join(', ')}${wordList.length > 3 ? '...' : ''}`;
+      // Save to Supabase
+      try {
+        setSupabaseSaveStatus('Saving lesson to database...');
+        const { lessonId } = await saveLesson(words, completedLesson);
+        setSupabaseSaveStatus(`✓ Lesson saved! Share URL: ${window.location.origin}?lesson=${lessonId}`);
 
-      const lessonToSave = {
-        id: lessonId,
-        name: lessonName,
-        description: `Vocabulary lesson with ${completedLesson.words.length} words`,
-        date: new Date().toISOString(),
-        words: words,
-        lessonData: completedLesson
-      };
-
-      // Save to GitHub if configured
-      if (import.meta.env.VITE_GITHUB_TOKEN) {
-        // Validate filename
-        let finalFilename = customFilename.trim();
-        if (finalFilename && !finalFilename.endsWith('.json')) {
-          finalFilename += '.json';
-        }
-
-        await saveLessonToGitHub(
-          lessonToSave,
-          lessonId,
-          customDirectory.trim() || 'public/lessons',
-          finalFilename || null
-        );
+        // Update URL without reloading page
+        window.history.pushState({}, '', `?lesson=${lessonId}`);
+      } catch (error) {
+        console.error('Error saving to Supabase:', error);
+        setSupabaseSaveStatus(`✗ Save failed: ${error.message}`);
       }
 
       setStep('preteach');
@@ -1360,83 +1060,68 @@ RULES:
               <h1 className="text-3xl font-bold text-gray-800">Vocabulary Lesson Builder</h1>
             </div>
 
-          {/* Saved Lessons Section */}
+          {/* Lesson Library from Supabase */}
           <div className="mb-6">
             <div className="flex gap-3 mb-3">
               <button
-                onClick={() => setShowSaved(!showSaved)}
-                className="flex-1 bg-purple-600 text-white py-3 px-6 rounded-lg text-lg font-semibold hover:bg-purple-700 transition"
+                onClick={() => {
+                  setShowLessonLibrary(!showLessonLibrary);
+                  if (!showLessonLibrary) loadLessonLibrary();
+                }}
+                className="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg text-lg font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2"
               >
-                {showSaved ? 'Hide' : 'Show'} Saved Lessons ({savedLessons.length})
-              </button>
-              <button
-                onClick={importLessonFromFile}
-                className="bg-green-600 text-white py-3 px-6 rounded-lg text-lg font-semibold hover:bg-green-700 transition"
-              >
-                📁 Import
+                <Library className="w-5 h-5" />
+                {showLessonLibrary ? 'Hide Lessons' : 'Browse All Lessons'}
               </button>
             </div>
 
-            {showSaved && (
-              <div className="border-2 border-gray-300 rounded-lg p-4 max-h-96 overflow-y-auto">
-                {savedLessons.length === 0 ? (
-                  <p className="text-gray-500 text-center">No saved lessons yet</p>
+            {showLessonLibrary && (
+              <div className="border-2 border-blue-300 rounded-lg p-4 max-h-96 overflow-y-auto mt-4 bg-blue-50">
+                {loadingLibrary ? (
+                  <div className="text-center py-8">
+                    <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-2" />
+                    <p className="text-gray-600">Loading lessons from database...</p>
+                  </div>
+                ) : lessonLibrary.length === 0 ? (
+                  <p className="text-gray-500 text-center">No lessons in the library yet. Create your first lesson!</p>
                 ) : (
                   <div className="space-y-3">
-                    {savedLessons.map((lesson) => (
-                      <div key={lesson.key} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                        {deletingLesson === lesson.key ? (
-                          <div className="bg-red-50 p-4 rounded border-2 border-red-300">
-                            <p className="font-bold text-red-800 mb-3">Delete "{lesson.name}"?</p>
-                            <p className="text-sm text-red-700 mb-4">This action cannot be undone.</p>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => confirmDelete(lesson.key)}
-                                className="flex-1 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 font-semibold"
-                              >
-                                Yes, Delete
-                              </button>
-                              <button
-                                onClick={cancelDelete}
-                                className="flex-1 bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 font-semibold"
-                              >
-                                Cancel
-                              </button>
-                            </div>
+                    <h3 className="font-bold text-lg text-blue-800 mb-3 flex items-center gap-2">
+                      <Library className="w-5 h-5" />
+                      All Lessons ({lessonLibrary.length})
+                    </h3>
+                    {lessonLibrary.map((lesson) => (
+                      <div key={lesson.id} className="bg-white p-4 rounded-lg border border-blue-200 hover:border-blue-400 transition">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <h3 className="font-bold text-lg text-gray-800">{lesson.title}</h3>
+                            <p className="text-sm text-gray-600">
+                              {new Date(lesson.created_at).toLocaleDateString()}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Views: {lesson.view_count || 0}
+                            </p>
                           </div>
-                        ) : (
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <h3 className="font-bold text-lg">{lesson.name}</h3>
-                              <p className="text-sm text-gray-600">
-                                {new Date(lesson.date).toLocaleDateString()}
-                              </p>
-                              <p className="text-sm text-gray-500 mt-1">
-                                Words: {lesson.words ? lesson.words.split('\n').filter(w => w.trim()).join(', ') : 'N/A'}
-                              </p>
-                            </div>
-                            <div className="flex gap-2 ml-4">
-                              <button
-                                onClick={() => loadLesson(lesson.key)}
-                                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm"
-                              >
-                                Load
-                              </button>
-                              <button
-                                onClick={() => exportLessonToFile(lesson)}
-                                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm"
-                              >
-                                Export
-                              </button>
-                              <button
-                                onClick={() => deleteLesson(lesson.key, lesson.name)}
-                                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 text-sm"
-                              >
-                                Delete
-                              </button>
-                            </div>
+                          <div className="flex gap-2 ml-4">
+                            <button
+                              onClick={() => loadLessonFromSupabase(lesson.lesson_id)}
+                              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-semibold"
+                            >
+                              Load
+                            </button>
+                            <button
+                              onClick={() => {
+                                const url = `${window.location.origin}?lesson=${lesson.lesson_id}`;
+                                navigator.clipboard.writeText(url);
+                                alert(`Link copied!\n${url}`);
+                              }}
+                              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm font-semibold flex items-center gap-1"
+                            >
+                              <Copy className="w-4 h-4" />
+                              Share
+                            </button>
                           </div>
-                        )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1444,7 +1129,7 @@ RULES:
               </div>
             )}
           </div>
-          
+
           <div className="mb-6">
             <label className="block text-lg font-semibold text-gray-700 mb-2">
               Enter Vocabulary Words (one per line, up to 10):
@@ -1457,32 +1142,11 @@ RULES:
             />
           </div>
 
-          {/* GitHub Auto-Save Status */}
-          {import.meta.env.VITE_GITHUB_TOKEN ? (
-            githubSaveStatus && (
-              <div className="mb-6 p-4 bg-purple-50 border-2 border-purple-300 rounded-lg">
-                <p className="text-sm font-semibold text-purple-700">
-                  {githubSaveStatus}
-                </p>
-              </div>
-            )
-          ) : (
-            <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-300 rounded-lg">
-              <h3 className="font-semibold text-gray-800 mb-2">💡 Want Automatic Deployment?</h3>
-              <p className="text-sm text-gray-600 mb-3">
-                Set up GitHub Auto-Save to automatically deploy lessons when you create them.
-                No more manual exports or deployments!
-              </p>
-              <a
-                href="https://github.com/settings/tokens"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700"
-              >
-                Set Up GitHub Auto-Save (5 min)
-              </a>
-              <p className="text-xs text-gray-500 mt-2">
-                See GITHUB_AUTO_SAVE_QUICKSTART.md for instructions
+          {/* Save Status */}
+          {supabaseSaveStatus && (
+            <div className="mb-6 p-4 bg-green-50 border-2 border-green-300 rounded-lg">
+              <p className="text-sm font-semibold text-green-700">
+                {supabaseSaveStatus}
               </p>
             </div>
           )}
