@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Book, Image, CheckCircle, RefreshCw, Share2, Copy, Library, Trash2, Archive, ArchiveRestore } from 'lucide-react';
 import { saveLesson, loadLesson as loadLessonFromDB, getAllLessons, deleteLesson, archiveLesson, unarchiveLesson } from './supabaseClient';
 
@@ -37,6 +37,8 @@ const VocabLessonBuilder = () => {
   const [lessonLibrary, setLessonLibrary] = useState([]);
   const [loadingLibrary, setLoadingLibrary] = useState(false);
   const [supabaseSaveStatus, setSupabaseSaveStatus] = useState('');
+  const [autoSaveStatus, setAutoSaveStatus] = useState(''); // idle, saving, saved, error
+  const autoSaveTimerRef = useRef(null);
 
   // Load lesson from URL on mount
   React.useEffect(() => {
@@ -320,6 +322,48 @@ const VocabLessonBuilder = () => {
       }
     }
   }, [practiceAnswers, matchingAnswers, lessonData]);
+
+  // Auto-save lesson data changes (images, definitions, etc.) to Supabase
+  React.useEffect(() => {
+    // Only auto-save if we have lesson data and words (meaning lesson is loaded)
+    if (!lessonData || !words || loading) {
+      return;
+    }
+
+    // Clear any existing timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    // Debounce the save - wait 2 seconds after last change
+    autoSaveTimerRef.current = setTimeout(async () => {
+      try {
+        setAutoSaveStatus('saving');
+        console.log('Auto-saving lesson changes to Supabase...');
+
+        await saveLesson(words, lessonData);
+
+        setAutoSaveStatus('saved');
+        console.log('Lesson auto-saved successfully');
+
+        // Clear the "saved" status after 3 seconds
+        setTimeout(() => setAutoSaveStatus(''), 3000);
+      } catch (error) {
+        console.error('Error auto-saving lesson:', error);
+        setAutoSaveStatus('error');
+
+        // Clear the error status after 5 seconds
+        setTimeout(() => setAutoSaveStatus(''), 5000);
+      }
+    }, 2000);
+
+    // Cleanup function
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [lessonData, words, loading]);
 
   // Initialize matching items when entering practice mode - only use vocab words (high-quality Nano Banana images)
   React.useEffect(() => {
@@ -1320,9 +1364,40 @@ IMPORTANT: Do NOT include any text, words, letters, sound effects (like "POW!" o
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-8">
         <div className="max-w-4xl mx-auto">
           <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">Pre-Teaching Vocabulary</h1>
-            <p className="text-gray-600 mb-4">Learn these words before reading the story!</p>
-            
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-800 mb-2">Pre-Teaching Vocabulary</h1>
+                <p className="text-gray-600">Learn these words before reading the story!</p>
+              </div>
+
+              {/* Auto-save Status Indicator */}
+              {autoSaveStatus && (
+                <div className={`px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
+                  autoSaveStatus === 'saving' ? 'bg-blue-100 text-blue-800' :
+                  autoSaveStatus === 'saved' ? 'bg-green-100 text-green-800' :
+                  autoSaveStatus === 'error' ? 'bg-red-100 text-red-800' : ''
+                }`}>
+                  {autoSaveStatus === 'saving' && (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Saving...
+                    </>
+                  )}
+                  {autoSaveStatus === 'saved' && (
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      Saved
+                    </>
+                  )}
+                  {autoSaveStatus === 'error' && (
+                    <>
+                      ✗ Save failed
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Share and Export Buttons */}
             <div className="flex gap-3 mb-4">
               <button
@@ -1606,12 +1681,36 @@ IMPORTANT: Do NOT include any text, words, letters, sound effects (like "POW!" o
         <div className="max-w-3xl mx-auto bg-white rounded-lg shadow-lg p-8">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-4xl font-bold text-gray-800">{lessonData.story.title}</h1>
-            <button
-              onClick={exportCurrentLesson}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2"
-            >
-              💾 Export
-            </button>
+            <div className="flex items-center gap-3">
+              {/* Auto-save Status Indicator */}
+              {autoSaveStatus && (
+                <div className={`px-3 py-1 rounded-lg font-semibold text-sm flex items-center gap-2 ${
+                  autoSaveStatus === 'saving' ? 'bg-blue-100 text-blue-800' :
+                  autoSaveStatus === 'saved' ? 'bg-green-100 text-green-800' :
+                  autoSaveStatus === 'error' ? 'bg-red-100 text-red-800' : ''
+                }`}>
+                  {autoSaveStatus === 'saving' && (
+                    <>
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      Saving...
+                    </>
+                  )}
+                  {autoSaveStatus === 'saved' && (
+                    <>
+                      <CheckCircle className="w-3 h-3" />
+                      Saved
+                    </>
+                  )}
+                  {autoSaveStatus === 'error' && '✗ Save failed'}
+                </div>
+              )}
+              <button
+                onClick={exportCurrentLesson}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2"
+              >
+                💾 Export
+              </button>
+            </div>
           </div>
           <div className="prose prose-lg max-w-none">
             <p 
@@ -1655,7 +1754,7 @@ IMPORTANT: Do NOT include any text, words, letters, sound effects (like "POW!" o
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-teal-50 p-8">
         <div className="max-w-4xl mx-auto">
           <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-start">
               <div>
                 <h1 className="text-3xl font-bold text-gray-800 mb-2">Practice Activities</h1>
                 {/* Progress indicator */}
@@ -1679,12 +1778,36 @@ IMPORTANT: Do NOT include any text, words, letters, sound effects (like "POW!" o
                   </span>
                 </div>
               </div>
-              <button
-                onClick={exportCurrentLesson}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2"
-              >
-                💾 Export
-              </button>
+              <div className="flex items-start gap-3">
+                {/* Auto-save Status Indicator */}
+                {autoSaveStatus && (
+                  <div className={`px-3 py-1 rounded-lg font-semibold text-sm flex items-center gap-2 ${
+                    autoSaveStatus === 'saving' ? 'bg-blue-100 text-blue-800' :
+                    autoSaveStatus === 'saved' ? 'bg-green-100 text-green-800' :
+                    autoSaveStatus === 'error' ? 'bg-red-100 text-red-800' : ''
+                  }`}>
+                    {autoSaveStatus === 'saving' && (
+                      <>
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        Saving...
+                      </>
+                    )}
+                    {autoSaveStatus === 'saved' && (
+                      <>
+                        <CheckCircle className="w-3 h-3" />
+                        Saved
+                      </>
+                    )}
+                    {autoSaveStatus === 'error' && '✗ Save failed'}
+                  </div>
+                )}
+                <button
+                  onClick={exportCurrentLesson}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2"
+                >
+                  💾 Export
+                </button>
+              </div>
             </div>
           </div>
 
