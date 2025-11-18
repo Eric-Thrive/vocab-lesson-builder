@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Book, Image, CheckCircle, RefreshCw, Share2, Copy, Library, Trash2, Archive, ArchiveRestore } from 'lucide-react';
-import { saveLesson, loadLesson as loadLessonFromDB, getAllLessons, deleteLesson, archiveLesson, unarchiveLesson } from './supabaseClient';
+import { saveLesson, loadLesson as loadLessonFromDB, getAllLessons, deleteLesson, archiveLesson, unarchiveLesson, uploadImageToStorage } from './supabaseClient';
 
 const VocabLessonBuilder = () => {
   const [step, setStep] = useState('input'); // input, preteach, story, practice
@@ -68,14 +68,38 @@ const VocabLessonBuilder = () => {
   const loadLessonFromSupabase = async (lessonId) => {
     try {
       setLoading(true);
+      console.log('Loading lesson from Supabase:', lessonId);
       const lesson = await loadLessonFromDB(lessonId);
+
+      if (!lesson) {
+        throw new Error('Lesson not found');
+      }
+
+      console.log('Lesson loaded successfully:', lesson);
       setWords(lesson.words);
       setLessonData(lesson.lesson_data);
       setStep('preteach');
       setShowLessonLibrary(false); // Close the lesson library after loading
     } catch (error) {
       console.error('Error loading lesson from Supabase:', error);
-      alert(`Could not load lesson. Please try again.`);
+      console.error('Lesson ID that failed:', lessonId);
+      console.error('Full error:', JSON.stringify(error, null, 2));
+
+      let errorMessage = 'Could not load lesson.';
+
+      if (error.message === 'Lesson not found') {
+        errorMessage = `Lesson "${lessonId}" not found. It may have been deleted or the link is invalid.`;
+      } else if (error.code === 'PGRST116') {
+        errorMessage = `Lesson "${lessonId}" does not exist in the database.`;
+      } else {
+        errorMessage = `Failed to load lesson: ${error.message}\n\nCheck the browser console for details.`;
+      }
+
+      alert(errorMessage);
+
+      // Show the lesson library so user can pick a different lesson
+      setShowLessonLibrary(true);
+      setStep('input');
     } finally {
       setLoading(false);
     }
@@ -102,12 +126,15 @@ const VocabLessonBuilder = () => {
     }
 
     try {
-      await deleteLesson(lessonId);
+      console.log('Attempting to delete lesson:', lessonId);
+      const result = await deleteLesson(lessonId);
+      console.log('Delete result:', result);
       alert(`✓ Lesson "${lessonTitle}" has been deleted.`);
       await loadLessonLibrary(showArchivedLessons); // Reload the library with current filter state
     } catch (error) {
       console.error('Error deleting lesson:', error);
-      alert(`Failed to delete lesson: ${error.message}`);
+      console.error('Error details:', JSON.stringify(error, null, 2));
+      alert(`Failed to delete lesson: ${error.message}\n\nCheck the console for more details.\n\nThis is likely a Supabase permissions issue.`);
     }
   };
 
@@ -476,10 +503,8 @@ const VocabLessonBuilder = () => {
       lessonData: lessonData
     };
 
-    // Create both short link (for GitHub-hosted lessons) and full link (legacy)
+    // Create short link using lesson ID (primary sharing method)
     const shortLink = `${window.location.origin}${window.location.pathname}?lesson=${lessonId}`;
-    const encodedLesson = btoa(JSON.stringify({ words: words, lessonData: lessonData }));
-    const fullLink = `${window.location.origin}${window.location.pathname}?lesson=${encodedLesson}`;
 
     // Store the lesson data for download
     window.currentLessonForDownload = lessonToShare;
@@ -1017,11 +1042,41 @@ IMPORTANT: Do NOT include any text, words, letters, sound effects (like "POW!" o
         }
       }
 
-      // Skip distractor images - we only use vocab words in the matching game now
-      const completedLesson = { ...lesson, words: wordsWithImages };
-      setLessonData(completedLesson);
+      // Generate a temporary lesson ID for organizing images in storage
+      const tempLessonId = words
+        .split('\n')
+        .filter(w => w.trim())
+        .slice(0, 3)
+        .map(w => w.trim().toLowerCase().replace(/[^a-z0-9]/g, '-'))
+        .join('-')
+        .substring(0, 50);
 
-      // Save to Supabase
+      // Upload images to Supabase Storage and replace base64 URLs with storage URLs
+      console.log('Uploading images to Supabase Storage...');
+      setSupabaseSaveStatus('Uploading images to storage...');
+
+      const wordsWithStorageUrls = [];
+      for (let i = 0; i < wordsWithImages.length; i++) {
+        const wordObj = wordsWithImages[i];
+        try {
+          // Upload the base64 image to storage and get back the public URL
+          const storageUrl = await uploadImageToStorage(wordObj.image, tempLessonId, i);
+          wordsWithStorageUrls.push({
+            ...wordObj,
+            image: storageUrl // Replace base64 with storage URL
+          });
+          console.log(`✓ Uploaded image ${i + 1}/${wordsWithImages.length} to storage`);
+        } catch (uploadError) {
+          console.error(`Error uploading image for "${wordObj.word}":`, uploadError);
+          // Fallback: keep the base64 image if upload fails
+          wordsWithStorageUrls.push(wordObj);
+        }
+      }
+
+      // Skip distractor images - we only use vocab words in the matching game now
+      const completedLesson = { ...lesson, words: wordsWithStorageUrls };
+
+      // Save to Supabase (now with storage URLs instead of base64)
       try {
         setSupabaseSaveStatus('Saving lesson to database...');
         const { lessonId } = await saveLesson(words, completedLesson);
@@ -1029,9 +1084,15 @@ IMPORTANT: Do NOT include any text, words, letters, sound effects (like "POW!" o
 
         // Update URL without reloading page
         window.history.pushState({}, '', `?lesson=${lessonId}`);
+
+        // Set lesson data AFTER saving to avoid auto-save conflicts
+        setLessonData(completedLesson);
       } catch (error) {
         console.error('Error saving to Supabase:', error);
         setSupabaseSaveStatus(`✗ Save failed: ${error.message}`);
+
+        // Still set the lesson data even if save failed, so user can see their lesson
+        setLessonData(completedLesson);
       }
 
       setStep('preteach');

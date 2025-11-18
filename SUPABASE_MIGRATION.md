@@ -58,3 +58,138 @@ After running this migration, you'll have:
 - ✅ **Delete** button - Permanently removes lessons (hard delete)
 - ✅ **Show archived lessons** checkbox - Toggle visibility of archived lessons
 - ✅ Visual indicators for archived lessons (orange background)
+
+---
+
+## Row Level Security (RLS) Policies
+
+### ⚠️ IMPORTANT: Required for Delete/Update/Insert to Work
+
+If your delete, archive, or update buttons are not working, you need to enable the proper RLS policies. Run this SQL in Supabase:
+
+```sql
+-- Enable Row Level Security on lessons table
+ALTER TABLE lessons ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Public read access" ON lessons;
+DROP POLICY IF EXISTS "Public insert access" ON lessons;
+DROP POLICY IF EXISTS "Public update access" ON lessons;
+DROP POLICY IF EXISTS "Public delete access" ON lessons;
+
+-- Create SELECT policy
+CREATE POLICY "Public read access" ON lessons FOR SELECT USING (true);
+
+-- Create INSERT policy
+CREATE POLICY "Public insert access" ON lessons FOR INSERT WITH CHECK (true);
+
+-- Create UPDATE policy
+CREATE POLICY "Public update access" ON lessons FOR UPDATE USING (true) WITH CHECK (true);
+
+-- Create DELETE policy (THIS IS THE KEY ONE FOR THE DELETE BUTTON!)
+CREATE POLICY "Public delete access" ON lessons FOR DELETE USING (true);
+```
+
+### What These Policies Do
+
+- **SELECT policy**: Allows anyone to read lessons
+- **INSERT policy**: Allows anyone to create new lessons
+- **UPDATE policy**: Allows anyone to update lessons (for archive/unarchive)
+- **DELETE policy**: Allows anyone to permanently delete lessons
+
+### Security Note
+
+These policies allow public access for simplicity. In a production environment with user authentication, you should replace `true` with proper user authentication checks like `auth.uid() = user_id`.
+
+### Verify Policies Are Active
+
+After running the SQL, go to:
+1. Supabase Dashboard → Authentication → Policies
+2. Select the `lessons` table
+3. You should see all 4 policies listed above
+
+If the delete button still doesn't work after adding these policies:
+1. Check the browser console for errors
+2. Make sure you're using the correct `lesson_id` format
+3. Try refreshing the page
+
+---
+
+## Supabase Storage Setup (REQUIRED for 10-word lessons)
+
+### ⚠️ IMPORTANT: Required to Save Large Lessons
+
+To save lessons with many words (especially 10 words), you MUST set up Supabase Storage. This stores images separately instead of in the database, reducing the payload size from ~10MB to just a few KB.
+
+### Step 1: Create Storage Bucket
+
+1. Go to your Supabase Dashboard
+2. Click **Storage** in the left sidebar
+3. Click **New bucket**
+4. Set the following:
+   - **Name**: `lesson-images`
+   - **Public bucket**: ✅ **YES** (check this box!)
+   - **Allowed MIME types**: Leave empty or add `image/png, image/jpeg, image/jpg, image/webp`
+5. Click **Create bucket**
+
+### Step 2: Set Storage Policies
+
+After creating the bucket, you need to allow public access:
+
+1. Go to **Storage** → **Policies** → Select `lesson-images` bucket
+2. Click **New policy**
+3. Create these policies:
+
+**Policy 1: Public Upload Access**
+```sql
+CREATE POLICY "Public upload access"
+ON storage.objects FOR INSERT
+TO public
+WITH CHECK (bucket_id = 'lesson-images');
+```
+
+**Policy 2: Public Read Access**
+```sql
+CREATE POLICY "Public read access"
+ON storage.objects FOR SELECT
+TO public
+USING (bucket_id = 'lesson-images');
+```
+
+**Policy 3: Public Update Access** (for re-uploading images)
+```sql
+CREATE POLICY "Public update access"
+ON storage.objects FOR UPDATE
+TO public
+USING (bucket_id = 'lesson-images')
+WITH CHECK (bucket_id = 'lesson-images');
+```
+
+**Policy 4: Public Delete Access** (for cleanup)
+```sql
+CREATE POLICY "Public delete access"
+ON storage.objects FOR DELETE
+TO public
+USING (bucket_id = 'lesson-images');
+```
+
+### Step 3: Verify Storage is Working
+
+1. Try creating a lesson with 10 vocabulary words
+2. Check the browser console (F12) - you should see messages like:
+   - `Uploading image: lesson-id/word-0-timestamp.png (XXX KB)`
+   - `✓ Image uploaded successfully: https://...`
+3. In Supabase Dashboard → Storage → lesson-images, you should see folders with your lesson IDs containing image files
+
+### What This Does
+
+- **Before**: Images stored as base64 in database (10 words = ~10MB payload) ❌
+- **After**: Images stored in Supabase Storage, only URLs in database (10 words = ~5KB payload) ✅
+
+### Benefits
+
+- ✅ Can save lessons with 10 or more words
+- ✅ Much faster saving and loading
+- ✅ Reduced database costs
+- ✅ Better performance
+- ✅ Automatic cleanup when deleting lessons
