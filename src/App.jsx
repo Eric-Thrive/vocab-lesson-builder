@@ -16,6 +16,8 @@ const VocabLessonBuilder = () => {
 
   const [editingDefinition, setEditingDefinition] = useState(null);
   const [editedDefinition, setEditedDefinition] = useState('');
+  const [editingExamples, setEditingExamples] = useState(null);
+  const [editedExamples, setEditedExamples] = useState([]);
   const [deletingLesson, setDeletingLesson] = useState(null);
   const [showArchivedLessons, setShowArchivedLessons] = useState(false);
   const [imageProgress, setImageProgress] = useState({ current: 0, total: 0, word: '' });
@@ -618,6 +620,14 @@ Be warm and use very simple language.`;
     setLessonData({ ...lessonData, words: updatedWords });
     setEditingDefinition(null);
     setEditedDefinition('');
+  };
+
+  const updateExamples = (wordIndex, newExamples) => {
+    const updatedWords = [...lessonData.words];
+    updatedWords[wordIndex].examples = newExamples.filter(ex => ex.trim());
+    setLessonData({ ...lessonData, words: updatedWords });
+    setEditingExamples(null);
+    setEditedExamples([]);
   };
 
   const handleImagePaste = async (e, wordIndex) => {
@@ -1679,10 +1689,74 @@ IMPORTANT: Do NOT include any text, words, letters, sound effects (like "POW!" o
                     </div>
                     
                     <div className="space-y-3 mb-6">
-                      <p className="font-semibold text-gray-700 text-xl">Examples:</p>
-                      {wordObj.examples.map((ex, i) => (
-                        <p key={i} className="text-xl text-gray-600">• {ex}</p>
-                      ))}
+                      <div className="flex items-center gap-2 mb-2">
+                        <p className="font-semibold text-gray-700 text-xl">Examples:</p>
+                        {editingExamples !== idx && (
+                          <button
+                            onClick={() => {
+                              setEditingExamples(idx);
+                              setEditedExamples([...wordObj.examples]);
+                            }}
+                            className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                      {editingExamples === idx ? (
+                        <div className="space-y-2">
+                          {editedExamples.map((ex, i) => (
+                            <div key={i} className="flex gap-2">
+                              <input
+                                type="text"
+                                value={ex}
+                                onChange={(e) => {
+                                  const newExamples = [...editedExamples];
+                                  newExamples[i] = e.target.value;
+                                  setEditedExamples(newExamples);
+                                }}
+                                className="flex-1 p-2 border-2 border-blue-300 rounded-lg text-lg"
+                              />
+                              <button
+                                onClick={() => {
+                                  const newExamples = editedExamples.filter((_, idx) => idx !== i);
+                                  setEditedExamples(newExamples);
+                                }}
+                                className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 text-sm"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => setEditedExamples([...editedExamples, ''])}
+                            className="text-blue-600 hover:text-blue-800 text-sm"
+                          >
+                            + Add example
+                          </button>
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              onClick={() => updateExamples(idx, editedExamples)}
+                              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingExamples(null);
+                                setEditedExamples([]);
+                              }}
+                              className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 text-sm"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        wordObj.examples.map((ex, i) => (
+                          <p key={i} className="text-xl text-gray-600">• {ex}</p>
+                        ))
+                      )}
                     </div>
 
                     {/* Navigation Buttons */}
